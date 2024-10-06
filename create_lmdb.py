@@ -39,7 +39,9 @@ def main(args, logger):
 
 
 if __name__ == '__main__':
-    time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    # time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+
     parser = argparse.ArgumentParser(description='Script for creating lmdb database.')
     parser.add_argument('--txt', nargs='?', type=str, default='', required=True,
                         help='Path to text file containing file paths')
@@ -53,7 +55,9 @@ if __name__ == '__main__':
                         const=True, help='Overwrite existing data')
     args = parser.parse_args()
 
-    log_dir = args.log_path + '/' + time_stamp + '/'
+    # log_dir = args.log_path + '/' + time_stamp + '/'
+    log_dir = os.path.join(args.log_path, time_stamp)
+
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     logger = logging.getLogger('lmdb')
