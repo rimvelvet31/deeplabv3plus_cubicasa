@@ -58,24 +58,34 @@ class ASPP(nn.Module):
         self.conv1x1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
 
         # Atrous convs that capture different scales
-        self.atrous_conv_rate6 = AtrousConv(in_channels, out_channels, dilation=6, use_attention=use_attention)
-        self.atrous_conv_rate12 = AtrousConv(in_channels, out_channels, dilation=12, use_attention=use_attention)
-        self.atrous_conv_rate18 = AtrousConv(in_channels, out_channels, dilation=18, use_attention=use_attention)
+        self.atrous_conv_rate6 = AtrousConv(in_channels, 
+                                            out_channels, 
+                                            dilation=6, 
+                                            use_attention=use_attention)
+        
+        self.atrous_conv_rate12 = AtrousConv(in_channels, 
+                                             out_channels, 
+                                             dilation=12, 
+                                             use_attention=use_attention)
+        
+        self.atrous_conv_rate18 = AtrousConv(in_channels, 
+                                             out_channels, 
+                                             dilation=18, 
+                                             use_attention=use_attention)
 
         # Downsampling (reduce spatial dimensions)
-        self.image_pooling = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+        self.image_pooling = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                           nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+                                           nn.BatchNorm2d(out_channels),
+                                           nn.ReLU(inplace=True))
 
         # Projection layer
-        self.project = nn.Sequential(
-            nn.Conv2d(out_channels * 5, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+        self.project = nn.Sequential(nn.Conv2d(out_channels * 5, 
+                                               out_channels, 
+                                               kernel_size=1, 
+                                               bias=False),
+                                     nn.BatchNorm2d(out_channels),
+                                     nn.ReLU(inplace=True))
 
     def forward(self, x):
         x1 = self.conv1x1(x)
@@ -91,7 +101,7 @@ class ASPP(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, low_level_channels, num_classes, use_attention=False):
+    def __init__(self, low_level_channels, num_room_classes, num_icon_classes, use_attention=False):
         super().__init__()
 
         self.low_level_projection = nn.Sequential(
@@ -105,14 +115,16 @@ class Decoder(nn.Module):
         if self.use_attention:
             self.sa = SpatialAttention()
 
-        self.decoder = nn.Sequential(
+        # Shared decoder for room and icon heads
+        self.shared_decoder = nn.Sequential(
             # 256 (ASPP output) + 48 (low-level features) = 304 channels
             DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1),
             DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
-
-            # Prediction layer
-            nn.Conv2d(256, num_classes, kernel_size=1)
         )
+
+        # Separate heads for room and icon predictions
+        self.room_head = nn.Conv2d(256, num_room_classes, kernel_size=1)
+        self.icon_head = nn.Conv2d(256, num_icon_classes, kernel_size=1)
 
     def forward(self, low_level_features, aspp_output, input_shape):
         low_level = self.low_level_projection(low_level_features)
@@ -130,23 +142,47 @@ class Decoder(nn.Module):
         
         # Concatenate high-level and low-level features
         concat = torch.cat([first_upsampling, low_level], dim=1)
-        decoder_output = self.decoder(concat)
+
+        # Shared decoder
+        decoder_output = self.shared_decoder(concat)
+
+        # Room prediction
+        room_output = nn.functional.interpolate(self.room_head(decoder_output), 
+                                                size=input_shape, 
+                                                mode="bilinear", 
+                                                align_corners=True)
+
+        # Icon prediction
+        icon_output = nn.functional.interpolate(self.icon_head(decoder_output), 
+                                                size=input_shape, 
+                                                mode="bilinear", 
+                                                align_corners=True)
+        
+        # Aligns with CubiCasa segmentation outputs
+        return room_output, icon_output
 
         # Upsample back to input size
-        second_upsampling = nn.functional.interpolate(decoder_output, 
-                                           size=input_shape, 
-                                           mode="bilinear", 
-                                           align_corners=True)
-        return second_upsampling
+        # second_upsampling = nn.functional.interpolate(decoder_output, 
+        #                                    size=input_shape, 
+        #                                    mode="bilinear", 
+        #                                    align_corners=True)
+        # return second_upsampling
 
 
 class DeepLabV3Plus(nn.Module):
-    def __init__(self, backbone="xception", attention=False, num_classes=11):
+    def __init__(self, backbone="mobilenetv2", attention=False, num_room_classes=12, num_icon_classes=11):
         super().__init__()
+
+        self.backbone_name = backbone
         
         self.backbone = Backbone(backbone=backbone)
+
         self.aspp = ASPP(self.backbone.high_level_channels, 256, use_attention=attention)
-        self.decoder = Decoder(self.backbone.low_level_channels, num_classes, use_attention=attention)
+
+        self.decoder = Decoder(self.backbone.low_level_channels, 
+                               num_room_classes, 
+                               num_icon_classes, 
+                               use_attention=attention)
 
     def forward(self, x):
         input_shape = x.shape[2:] # Get Height x Width
@@ -158,5 +194,8 @@ class DeepLabV3Plus(nn.Module):
         aspp_output = self.aspp(high_level_features)
 
         # Pass low level features and ASPP output through decoder
-        output = self.decoder(low_level_features, aspp_output, input_shape)
-        return output
+        room_output, icon_output = self.decoder(low_level_features, aspp_output, input_shape)
+        
+        # Decoder outputs two segmentation maps
+        return room_output, icon_output
+    
