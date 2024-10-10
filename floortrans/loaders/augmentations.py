@@ -144,26 +144,27 @@ class DictToTensor(object):
     def cubi(self, sample):
         image, label = sample['image'], sample['label']
         _, height, width = label.shape
-        heatmaps = sample['heatmaps']
-        scale = sample['scale']
+        
+        # heatmaps = sample['heatmaps']
+        # scale = sample['scale']
 
-        heatmap_tensor = np.zeros((21, height, width))
-        for channel, coords in heatmaps.items():
-            for x, y in coords:
-                if x >= width:
-                    x -= 1
-                if y >= height:
-                    y -= 1
-                heatmap_tensor[int(channel), int(y), int(x)] = 1
+        # heatmap_tensor = np.zeros((21, height, width))
+        # for channel, coords in heatmaps.items():
+        #     for x, y in coords:
+        #         if x >= width:
+        #             x -= 1
+        #         if y >= height:
+        #             y -= 1
+        #         heatmap_tensor[int(channel), int(y), int(x)] = 1
 
-        # Gaussian filter
-        kernel = svg_utils.get_gaussian2D(int(30*scale))
-        for i, h in enumerate(heatmap_tensor):
-            heatmap_tensor[i] = cv2.filter2D(h, -1, kernel)
+        # # Gaussian filter
+        # kernel = svg_utils.get_gaussian2D(int(30*scale))
+        # for i, h in enumerate(heatmap_tensor):
+        #     heatmap_tensor[i] = cv2.filter2D(h, -1, kernel)
 
-        heatmap_tensor = torch.FloatTensor(heatmap_tensor)
+        # heatmap_tensor = torch.FloatTensor(heatmap_tensor)
 
-        label = torch.cat((heatmap_tensor, label), 0)
+        # label = torch.cat((heatmap_tensor, label), 0)
 
         return {'image': image, 'label': label}
 
@@ -625,28 +626,23 @@ class ResizePaddedTorch(object):
 
         return {'image': image, 'label': label, 'heatmaps': heatmap_points, 'scale': scale}
 
-    def resize_padded(self, img, new_shape, image=False, fill_cval=0, mode='nearest',
-                      aling_corners=None):
-        new_shape = torch.tensor([img.shape[0], new_shape[0], new_shape[1]], dtype=self.dtype)
-        old_shape = torch.tensor(img.shape, dtype=self.dtype)
+    def resize_padded(self, img, new_shape, image=False, fill_cval=0, mode='nearest', aling_corners=None):
+        new_shape = (new_shape[0], new_shape[1])  # Convert to tuple of ints
+        old_shape = img.shape  # No need to cast this to tensor
+        
+        ratio = min(new_shape[0] / old_shape[1], new_shape[1] / old_shape[2])
+        
+        interm_shape = (int(ratio * old_shape[1]), int(ratio * old_shape[2]))  # Integers required here
 
-        ratio = (new_shape / old_shape).min()
-        img_s = torch.tensor(img.shape[1:], dtype=self.dtype)
-        interm_shape = (ratio * img_s).ceil()
-
-        interm_shape = [interm_shape[0], interm_shape[1]]
-
-        img = img.unsqueeze(0)
+        img = img.unsqueeze(0)  # Add a batch dimension
         interm_img = torch.nn.functional.interpolate(img, size=interm_shape, mode=mode, align_corners=aling_corners)
-        interm_img = interm_img.squeeze(0)
+        interm_img = interm_img.squeeze(0)  # Remove the batch dimension
+        
+        new_img = torch.full((img.shape[1], self.size[0], self.size[1]), fill_cval)  # Final padded image
 
-        a = (interm_img.shape[0], self.size[0], self.size[1])
+        x_pad = (self.size[1] - interm_img.shape[2]) // 2
+        y_pad = (self.size[0] - interm_img.shape[1]) // 2
 
-        new_img = torch.full(a, fill_cval)
-
-        x_pad = int((self.width - interm_img.shape[1]) / 2)
-        y_pad = int((self.height - interm_img.shape[2]) / 2)
-
-        new_img[:, x_pad:interm_img.shape[1]+x_pad, y_pad:interm_img.shape[2]+y_pad] = interm_img
+        new_img[:, y_pad:y_pad + interm_img.shape[1], x_pad:x_pad + interm_img.shape[2]] = interm_img
 
         return new_img, ratio, x_pad, y_pad
