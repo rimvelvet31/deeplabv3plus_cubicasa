@@ -101,7 +101,7 @@ class ASPP(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, low_level_channels, num_room_classes, num_icon_classes, use_attention=False):
+    def __init__(self, low_level_channels, num_room_classes, num_icon_classes, num_heatmaps, use_attention=False):
         super().__init__()
 
         self.low_level_projection = nn.Sequential(
@@ -115,16 +115,22 @@ class Decoder(nn.Module):
         if self.use_attention:
             self.sa = SpatialAttention()
 
-        # Shared decoder for room and icon heads
+        # Shared decoder for segmentation and heatmap heads
         self.shared_decoder = nn.Sequential(
             # 256 (ASPP output) + 48 (low-level features) = 304 channels
             DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1),
             DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
         )
 
-        # Separate heads for room and icon predictions
+        # Room segmentation head
         self.room_head = nn.Conv2d(256, num_room_classes, kernel_size=1)
+
+        # Icon segmentation head
         self.icon_head = nn.Conv2d(256, num_icon_classes, kernel_size=1)
+
+        # Heatmap regression head
+        self.heatmap_head = nn.Conv2d(256, num_heatmaps, kernel_size=1)
+
 
     def forward(self, low_level_features, aspp_output, input_shape):
         low_level = self.low_level_projection(low_level_features)
@@ -143,7 +149,7 @@ class Decoder(nn.Module):
         # Concatenate high-level and low-level features
         concat = torch.cat([first_upsampling, low_level], dim=1)
 
-        # Shared decoder
+        # Shared by segmentation and heatmap heads
         decoder_output = self.shared_decoder(concat)
 
         # Room prediction
@@ -158,30 +164,29 @@ class Decoder(nn.Module):
                                                 mode="bilinear", 
                                                 align_corners=True)
         
-        # Aligns with CubiCasa segmentation outputs
-        return room_output, icon_output
-
-        # Upsample back to input size
-        # second_upsampling = nn.functional.interpolate(decoder_output, 
-        #                                    size=input_shape, 
-        #                                    mode="bilinear", 
-        #                                    align_corners=True)
-        # return second_upsampling
+        # Heatmap prediction
+        heatmap_output = nn.functional.interpolate(self.heatmap_head(decoder_output), 
+                                                   size=input_shape, 
+                                                   mode="bilinear", 
+                                                   align_corners=True)
+        
+        # Aligns with CubiCasa outputs (2 segmentation maps + 21 heatmaps)
+        return room_output, icon_output, heatmap_output
 
 
 class DeepLabV3Plus(nn.Module):
-    def __init__(self, backbone="mobilenetv2", attention=False, num_room_classes=12, num_icon_classes=11):
+    def __init__(self, backbone="xception", attention=False, num_room_classes=12, num_icon_classes=11, num_heatmaps=21):
         super().__init__()
 
-        self.backbone_name = backbone
-        
         self.backbone = Backbone(backbone=backbone)
+        self.backbone_name = backbone
 
         self.aspp = ASPP(self.backbone.high_level_channels, 256, use_attention=attention)
 
         self.decoder = Decoder(self.backbone.low_level_channels, 
                                num_room_classes, 
-                               num_icon_classes, 
+                               num_icon_classes,
+                               num_heatmaps,
                                use_attention=attention)
 
     def forward(self, x):
@@ -194,8 +199,7 @@ class DeepLabV3Plus(nn.Module):
         aspp_output = self.aspp(high_level_features)
 
         # Pass low level features and ASPP output through decoder
-        room_output, icon_output = self.decoder(low_level_features, aspp_output, input_shape)
+        room_output, icon_output, heatmap_output = self.decoder(low_level_features, aspp_output, input_shape)
         
-        # Decoder outputs two segmentation maps
-        return room_output, icon_output
+        return room_output, icon_output, heatmap_output
     
