@@ -178,8 +178,14 @@ class DeepLabV3Plus(nn.Module):
     def __init__(self, backbone="xception", attention=False, num_room_classes=12, num_icon_classes=11, num_heatmaps=21):
         super().__init__()
 
-        self.backbone = Backbone(backbone=backbone)
         self.backbone_name = backbone
+
+        if attention:
+            self.attention = 'ca_sa'
+        else:
+            self.attention = 'base'
+
+        self.backbone = Backbone(backbone=backbone)
 
         self.aspp = ASPP(self.backbone.high_level_channels, 256, use_attention=attention)
 
