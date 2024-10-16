@@ -63,11 +63,11 @@ INITIAL_LR = args.lr
 
 # Preprocessing and Augmentations
 train_aug = Compose([
-    # transforms.RandomChoice([
-    #     RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
-    #     ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
-    # ]),
-    ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
+    transforms.RandomChoice([
+        RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
+        ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
+    ]),
+    # ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
     RandomRotations(format='cubi'),
     DictToTensor(),
     ColorJitterTorch(b_var=0.2, c_var=0.2, s_var=0.2)
@@ -82,7 +82,7 @@ val_aug = Compose([
 data_path = 'data/cubicasa5k/'
 format = 'lmdb'
 
-full_train_set = FloorplanSVG(
+train_set = FloorplanSVG(
     data_path, 
     'train.txt', 
     format=format, 
@@ -90,7 +90,7 @@ full_train_set = FloorplanSVG(
 )
 
 # Reduce training set for faster training (temporary)
-train_set = Subset(full_train_set, list(range(2100)))
+# train_set = Subset(full_train_set, list(range(2100)))
 
 val_set = FloorplanSVG(
     data_path, 
