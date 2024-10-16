@@ -1,6 +1,7 @@
 # General
 import os
 import time
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -40,21 +41,25 @@ else:
     device = torch.device('cpu')
     print('Using device: CPU')
 
-# Hyperparameters
-IMAGE_SIZE = (256, 256)
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Train DeepLabV3+ on the CubiCasa5k dataset')
+parser.add_argument('--img_size', type=int, default=256, help='Size to resize the images (default: 256)')
+parser.add_argument('--bs', type=int, default=32, help='Batch size (default: 32)')
+parser.add_argument('--workers', type=int, default=0, help='Number of data loading workers (default: 0)')
+parser.add_argument('--backbone', type=str, default='mobilenetv2', help='Backbone for DeepLabV3+ (default: mobilenetv2)')
+parser.add_argument('--attention', action='store_true', help='Use CA and SA modules (default: False)')
+parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 100)')
+parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate (default: 0.001)')
+args = parser.parse_args()
 
-DATA_PATH = 'data/cubicasa5k/'
-TRAIN_PATH = 'train.txt'
-VAL_PATH = 'val.txt'
-FORMAT = 'lmdb'
-
-BATCH_SIZE = 64
-NUM_WORKERS = 2
-
-BACKBONE = 'mobilenetv2'
-USE_ATTENTION = True
-
-EPOCHS = 300
+# Set hyperparameters from args
+IMAGE_SIZE = (args.img_size, args.img_size)
+BATCH_SIZE = args.bs
+NUM_WORKERS = args.workers
+BACKBONE = args.backbone
+USE_ATTENTION = args.attention
+EPOCHS = args.epochs
+INITIAL_LR = args.lr
 
 # Preprocessing and Augmentations
 train_aug = Compose([
@@ -74,25 +79,28 @@ val_aug = Compose([
 ])
 
 # Dataset and DataLoaders
-train_set = FloorplanSVG(
-    DATA_PATH, 
-    TRAIN_PATH, 
-    format=FORMAT, 
+data_path = 'data/cubicasa5k/'
+format = 'lmdb'
+
+full_train_set = FloorplanSVG(
+    data_path, 
+    'train.txt', 
+    format=format, 
     augmentations=train_aug
 )
 
 # Reduce training set for faster training (temporary)
-# train_set = Subset(full_train_set, list(range(1600)))
+train_set = Subset(full_train_set, list(range(2100)))
 
 val_set = FloorplanSVG(
-    DATA_PATH, 
-    VAL_PATH, 
-    format=FORMAT, 
+    data_path, 
+    'val.txt', 
+    format=format, 
     augmentations=val_aug
 )
 
-# print('Train set size:', len(train_set))
-# print('Validation set size:', len(val_set))
+print('Train set size:', len(train_set))
+print('Validation set size:', len(val_set))
 
 train_loader = DataLoader(
     train_set, 
@@ -137,8 +145,7 @@ heatmap_criterion = nn.MSELoss()
 multitask_criterion = MultiTaskUncertaintyLoss(num_tasks=3).to(device)
 
 # Based on CubiCasa5k training setup
-initial_lr = 1e-3
-optimizer = optim.Adam(model.parameters(), lr=initial_lr, betas=(0.9, 0.999), eps=1e-8)
+optimizer = optim.Adam(model.parameters(), lr=INITIAL_LR, betas=(0.9, 0.999), eps=1e-8)
 
 # Reduce learning rate if validation loss doesnt improve for 20 epochs
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=20)
@@ -217,10 +224,8 @@ def validate(model, dataloader, device):
 
     total_loss = 0.0
 
-    # Don't compute gradients
+    # Don't compute gradients during validation
     with torch.no_grad():
-
-        # Wrap dataloader with tqdm to show progress bar
         for batch in tqdm(dataloader, desc='Validating'):
             images = batch['image'].float().to(device)
 
@@ -263,69 +268,70 @@ def validate(model, dataloader, device):
 
 
 # Train and validate model
-best_val_loss = float('inf')
-lr_dropped = False
-early_stopping_patience = 30
-early_stopping_counter = 0
-model_path = f'saved_models/deeplabv3plus_{model.backbone_name}_{model.attention}.pt'
+if __name__ == '__main__':
+    best_val_loss = float('inf')
+    lr_dropped = False
+    early_stopping_patience = 30
+    early_stopping_counter = 0
+    model_path = f'saved_models/deeplabv3plus_{model.backbone_name}_{model.attention}.pt'
 
-for epoch in range(EPOCHS):
-    print(f"EPOCH {epoch+1}/{EPOCHS}")
+    for epoch in range(EPOCHS):
+        print(f"EPOCH {epoch+1}/{EPOCHS}")
 
-    train_loss, train_room_metrics, train_icon_metrics = train(model, train_loader, optimizer, device)
-    val_loss, val_room_metrics, val_icon_metrics = validate(model, val_loader, device)
+        train_loss, train_room_metrics, train_icon_metrics = train(model, train_loader, optimizer, device)
+        val_loss, val_room_metrics, val_icon_metrics = validate(model, val_loader, device)
 
-    train_room_mpa = train_room_metrics['mpa'].item()
-    train_room_miou = train_room_metrics['miou'].item()
-    train_room_fwiou = train_room_metrics['fwiou'].item()
+        train_room_mpa = train_room_metrics['mpa'].item()
+        train_room_miou = train_room_metrics['miou'].item()
+        train_room_fwiou = train_room_metrics['fwiou'].item()
 
-    train_icon_mpa = train_icon_metrics['mpa'].item()
-    train_icon_miou = train_icon_metrics['miou'].item()
-    train_icon_fwiou = train_icon_metrics['fwiou'].item()
+        train_icon_mpa = train_icon_metrics['mpa'].item()
+        train_icon_miou = train_icon_metrics['miou'].item()
+        train_icon_fwiou = train_icon_metrics['fwiou'].item()
 
-    val_room_mpa = val_room_metrics['mpa'].item()
-    val_room_miou = val_room_metrics['miou'].item()
-    val_room_fwiou = val_room_metrics['fwiou'].item()
+        val_room_mpa = val_room_metrics['mpa'].item()
+        val_room_miou = val_room_metrics['miou'].item()
+        val_room_fwiou = val_room_metrics['fwiou'].item()
 
-    val_icon_mpa = val_icon_metrics['mpa'].item()
-    val_icon_miou = val_icon_metrics['miou'].item()
-    val_icon_fwiou = val_icon_metrics['fwiou'].item()
+        val_icon_mpa = val_icon_metrics['mpa'].item()
+        val_icon_miou = val_icon_metrics['miou'].item()
+        val_icon_fwiou = val_icon_metrics['fwiou'].item()
 
-    print('\nTRAIN RESULTS')
-    print(f'Loss: {train_loss:.4f}')
-    print(f'Rooms - mPA: {train_room_mpa:.4f}, mIoU: {train_room_miou:.4f}, fwIoU: {train_room_fwiou:.4f}')
-    print(f'Icons - mPA: {train_icon_mpa:.4f}, mIoU: {train_icon_miou:.4f}, fwIoU: {train_icon_fwiou:.4f}')
+        print('\nTRAIN RESULTS')
+        print(f'Loss: {train_loss:.4f}')
+        print(f'Rooms - mPA: {train_room_mpa:.4f}, mIoU: {train_room_miou:.4f}, fwIoU: {train_room_fwiou:.4f}')
+        print(f'Icons - mPA: {train_icon_mpa:.4f}, mIoU: {train_icon_miou:.4f}, fwIoU: {train_icon_fwiou:.4f}')
 
-    print('\nVALIDATION RESULTS')
-    print(f'Loss: {val_loss:.4f}')
-    print(f'Rooms - mPA: {val_room_mpa:.4f}, mIoU: {val_room_miou:.4f}, fwIoU: {val_room_fwiou:.4f}')
-    print(f'Icons - mPA: {val_icon_mpa:.4f}, mIoU: {val_icon_miou:.4f}, fwIoU: {val_icon_fwiou:.4f}')
+        print('\nVALIDATION RESULTS')
+        print(f'Loss: {val_loss:.4f}')
+        print(f'Rooms - mPA: {val_room_mpa:.4f}, mIoU: {val_room_miou:.4f}, fwIoU: {val_room_fwiou:.4f}')
+        print(f'Icons - mPA: {val_icon_mpa:.4f}, mIoU: {val_icon_miou:.4f}, fwIoU: {val_icon_fwiou:.4f}')
 
-    # Save best model
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        lr_dropped = False
-        early_stopping_counter = 0
-        torch.save(model.state_dict(), model_path)
-        print(f'\nBest model saved with validation loss: {best_val_loss:.4f}')
-    else:
-        early_stopping_counter += 1
-        print(f'\nValidation loss did not improve.Best loss is still: {best_val_loss:.4f}')
+        # Save best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            lr_dropped = False
+            early_stopping_counter = 0
+            torch.save(model.state_dict(), model_path)
+            print(f'\nBest model saved with validation loss: {best_val_loss:.4f}')
+        else:
+            early_stopping_counter += 1
+            print(f'\nValidation loss did not improve.Best loss is still: {best_val_loss:.4f}')
 
-    # Terminate if model didn't improve for the early stopping patience
-    if early_stopping_counter >= early_stopping_patience:
-        print(f'\nEarly stopping triggered after {epoch+1} epochs')
-        break
+        # Terminate if model didn't improve for the early stopping patience
+        if early_stopping_counter >= early_stopping_patience:
+            print(f'\nEarly stopping triggered after {epoch+1} epochs')
+            break
 
-    # Check if LR was dropped
-    prev_lr = optimizer.param_groups[0]['lr']
-    scheduler.step(val_loss)
-    current_lr = optimizer.param_groups[0]['lr']
+        # Check if LR was dropped
+        prev_lr = optimizer.param_groups[0]['lr']
+        scheduler.step(val_loss)
+        current_lr = optimizer.param_groups[0]['lr']
 
-    # Reload best model weights if LR was dropped
-    if current_lr < prev_lr and not lr_dropped:
-        lr_dropped = True
-        model.load_state_dict(torch.load(model_path))
-        print(f'\nLR dropped to {current_lr}. Model weights reloaded with best validation loss: {best_val_loss:.4f}')
+        # Reload best model weights if LR was dropped
+        if current_lr < prev_lr and not lr_dropped:
+            lr_dropped = True
+            model.load_state_dict(torch.load(model_path))
+            print(f'\nLR dropped to {current_lr}. Model weights reloaded with best validation loss: {best_val_loss:.4f}')
 
-    print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+        print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
