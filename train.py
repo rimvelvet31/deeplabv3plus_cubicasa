@@ -48,8 +48,8 @@ TRAIN_PATH = 'train.txt'
 VAL_PATH = 'val.txt'
 FORMAT = 'lmdb'
 
-BATCH_SIZE = 32
-NUM_WORKERS = 4
+BATCH_SIZE = 64
+NUM_WORKERS = 2
 
 BACKBONE = 'mobilenetv2'
 USE_ATTENTION = True
