@@ -8,14 +8,16 @@ class DepthwiseSeparableConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, dilation=1):
         super().__init__()
 
-        self.depthwise = nn.Conv2d(in_channels, 
-                                   in_channels, 
-                                   kernel_size=kernel_size, 
-                                   padding=padding, 
-                                   dilation=dilation, 
-                                   groups=in_channels, # Each input channel is convolved separately
-                                   bias=False)
-        self.pointwise = nn.Conv2d(in_channels,out_channels, kernel_size=1, bias=False)
+        self.depthwise = nn.Conv2d(
+            in_channels, 
+            in_channels, 
+            kernel_size=kernel_size, 
+            padding=padding, 
+            dilation=dilation, 
+            groups=in_channels, # Each input channel is convolved separately
+            bias=False
+        )
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
@@ -30,11 +32,7 @@ class AtrousConv(nn.Module):
     def __init__(self, in_channels, out_channels, dilation, use_attention=False):
         super().__init__()
 
-        self.atrous_conv = DepthwiseSeparableConv(in_channels, 
-                                                  out_channels, 
-                                                  kernel_size=3, 
-                                                  padding=dilation, 
-                                                  dilation=dilation)
+        self.atrous_conv = DepthwiseSeparableConv(in_channels, out_channels, kernel_size=3, padding=dilation, dilation=dilation)
 
         # Channel Attention module
         self.use_attention = use_attention
@@ -58,34 +56,24 @@ class ASPP(nn.Module):
         self.conv1x1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
 
         # Atrous convs that capture different scales
-        self.atrous_conv_rate6 = AtrousConv(in_channels, 
-                                            out_channels, 
-                                            dilation=6, 
-                                            use_attention=use_attention)
-        
-        self.atrous_conv_rate12 = AtrousConv(in_channels, 
-                                             out_channels, 
-                                             dilation=12, 
-                                             use_attention=use_attention)
-        
-        self.atrous_conv_rate18 = AtrousConv(in_channels, 
-                                             out_channels, 
-                                             dilation=18, 
-                                             use_attention=use_attention)
+        self.atrous_conv_rate6 = AtrousConv(in_channels, out_channels, dilation=6, use_attention=use_attention)
+        self.atrous_conv_rate12 = AtrousConv(in_channels, out_channels, dilation=12, use_attention=use_attention)
+        self.atrous_conv_rate18 = AtrousConv(in_channels, out_channels, dilation=18, use_attention=use_attention)
 
         # Downsampling (reduce spatial dimensions)
-        self.image_pooling = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
-                                           nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-                                           nn.BatchNorm2d(out_channels),
-                                           nn.ReLU(inplace=True))
+        self.image_pooling = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
 
         # Projection layer
-        self.project = nn.Sequential(nn.Conv2d(out_channels * 5, 
-                                               out_channels, 
-                                               kernel_size=1, 
-                                               bias=False),
-                                     nn.BatchNorm2d(out_channels),
-                                     nn.ReLU(inplace=True))
+        self.project = nn.Sequential(
+            nn.Conv2d(out_channels * 5, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
 
     def forward(self, x):
         x1 = self.conv1x1(x)
@@ -116,11 +104,13 @@ class Decoder(nn.Module):
             self.sa = SpatialAttention()
 
         # Shared decoder for segmentation and heatmap heads
-        self.shared_decoder = nn.Sequential(
-            # 256 (ASPP output) + 48 (low-level features) = 304 channels
-            DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1),
-            DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
-        )
+        # 256 (ASPP output) + 48 (low-level features) = 304 channels
+        self.shared_decoder = DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1)
+        
+        # nn.Sequential(
+        #     DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1),
+        #     DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
+        # )
 
         # Room segmentation head
         self.room_head = nn.Conv2d(256, num_room_classes, kernel_size=1)
@@ -137,10 +127,12 @@ class Decoder(nn.Module):
         low_level_size = low_level.size()[2:]
 
         # First upsampling
-        first_upsampling = nn.functional.interpolate(aspp_output, 
-                                                     size=low_level_size, 
-                                                     mode="bilinear", 
-                                                     align_corners=True)
+        first_upsampling = nn.functional.interpolate(
+            aspp_output, 
+            size=low_level_size, 
+            mode="bilinear", 
+            align_corners=True
+        )
         
         # Spatial attention module
         if self.use_attention:
@@ -153,29 +145,35 @@ class Decoder(nn.Module):
         decoder_output = self.shared_decoder(concat)
 
         # Room prediction
-        room_output = nn.functional.interpolate(self.room_head(decoder_output), 
-                                                size=input_shape, 
-                                                mode="bilinear", 
-                                                align_corners=True)
+        room_output = nn.functional.interpolate(
+            self.room_head(decoder_output), 
+            size=input_shape, 
+            mode="bilinear", 
+            align_corners=True
+        )
 
         # Icon prediction
-        icon_output = nn.functional.interpolate(self.icon_head(decoder_output), 
-                                                size=input_shape, 
-                                                mode="bilinear", 
-                                                align_corners=True)
+        icon_output = nn.functional.interpolate(
+            self.icon_head(decoder_output), 
+            size=input_shape, 
+            mode="bilinear", 
+            align_corners=True
+        )
         
         # Heatmap prediction
-        heatmap_output = nn.functional.interpolate(self.heatmap_head(decoder_output), 
-                                                   size=input_shape, 
-                                                   mode="bilinear", 
-                                                   align_corners=True)
+        heatmap_output = nn.functional.interpolate(
+            self.heatmap_head(decoder_output), 
+            size=input_shape, 
+            mode="bilinear", 
+            align_corners=True
+        )
         
         # Aligns with CubiCasa outputs (2 segmentation maps + 21 heatmaps)
         return room_output, icon_output, heatmap_output
 
 
 class DeepLabV3Plus(nn.Module):
-    def __init__(self, backbone="xception", attention=False, num_room_classes=12, num_icon_classes=11, num_heatmaps=21):
+    def __init__(self, backbone="mobilenet_v2", attention=False, num_room_classes=12, num_icon_classes=11, num_heatmaps=21):
         super().__init__()
 
         self.backbone_name = backbone
@@ -189,11 +187,13 @@ class DeepLabV3Plus(nn.Module):
 
         self.aspp = ASPP(self.backbone.high_level_channels, 256, use_attention=attention)
 
-        self.decoder = Decoder(self.backbone.low_level_channels, 
-                               num_room_classes, 
-                               num_icon_classes,
-                               num_heatmaps,
-                               use_attention=attention)
+        self.decoder = Decoder(
+            self.backbone.low_level_channels, 
+            num_room_classes, 
+            num_icon_classes,
+            num_heatmaps,
+            use_attention=attention
+        )
 
     def forward(self, x):
         input_shape = x.shape[2:] # Get Height x Width
