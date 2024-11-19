@@ -1,36 +1,33 @@
-# General
 import os
 import time
 import argparse
 import logging
-import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-# PyTorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
-from torchvision import transforms
-from torchinfo import summary
+from torch.utils.data import DataLoader
+from torchvision.transforms import RandomChoice
 from torchmetrics import MetricCollection, Accuracy, JaccardIndex
 
-# CubiCasa
 from floortrans.loaders import FloorplanSVG
-from floortrans.loaders.augmentations import (RandomCropToSizeTorch,
+from floortrans.loaders.augmentations import (Compose,
+                                              RandomCropToSizeTorch,
                                               ResizePaddedTorch,
-                                              Compose,
+                                              RandomRotations,
                                               DictToTensor,
-                                              ColorJitterTorch,
-                                              RandomRotations)
+                                              ColorJitterTorch)
 
-# Own
 from model.deeplabv3plus import DeepLabV3Plus
 from loss_fn import MultiTaskUncertaintyLoss
 
-# Release GPU memory
-torch.cuda.empty_cache()
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
+
+# Set seed for reproducibility
+torch.manual_seed(1)
 
 # Use GPU if available
 if torch.cuda.is_available():
@@ -40,18 +37,16 @@ else:
     device = torch.device('cpu')
     print('Using device: CPU')
 
-
 # Parse command line arguments for setting hyperparameters
 parser = argparse.ArgumentParser(description='Train DeepLabV3+ on the CubiCasa5k dataset')
 parser.add_argument('--img_size', type=int, default=256, help='Size to resize the images (default: 256)')
 parser.add_argument('--bs', type=int, default=32, help='Batch size (default: 32)')
 parser.add_argument('--workers', type=int, default=0, help='Number of data loading workers (default: 0)')
-parser.add_argument('--backbone', type=str, default='mobilenetv2', help='Backbone for DeepLabV3+ (default: mobilenetv2)')
+parser.add_argument('--backbone', type=str, default='mobilenet_v2', help='Backbone for DeepLabV3+ (default: mobilenet_v2)')
 parser.add_argument('--attention', action='store_true', help='Use CA and SA modules (default: False)')
 parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 100)')
 parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate (default: 0.001)')
 parser.add_argument('--reload_best_model', action='store_true', help='Resume training from best model checkpoint (default: False)')
-
 args = parser.parse_args()
 
 IMAGE_SIZE = (args.img_size, args.img_size)
@@ -63,17 +58,16 @@ EPOCHS = args.epochs
 INITIAL_LR = args.lr
 RELOAD_BEST_MODEL = args.reload_best_model
 
-
 # Preprocessing and Augmentations
 train_aug = Compose([
-    # transforms.RandomChoice([
-    #     RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
-    #     ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
-    # ]),
-    ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
+    RandomChoice([
+        RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
+        ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
+    ]),
+    # ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
     RandomRotations(format='cubi'),
     DictToTensor(),
-    ColorJitterTorch(b_var=0.2, c_var=0.2, s_var=0.2)
+    ColorJitterTorch(b_var=0.1, c_var=0.1, s_var=0.1)
 ])
 
 val_aug = Compose([
@@ -85,74 +79,34 @@ val_aug = Compose([
 data_path = 'data/cubicasa5k/'
 format = 'lmdb'
 
-train_set = FloorplanSVG(
-    data_path, 
-    'train.txt', 
-    format=format, 
-    augmentations=train_aug
-)
+train_set = FloorplanSVG(data_path, 'train.txt', format=format, augmentations=train_aug)
+val_set = FloorplanSVG(data_path, 'val.txt', format=format, augmentations=val_aug)
 
-# Reduce training set for faster training (temporary)
-# train_set = Subset(full_train_set, list(range(2100)))
-
-val_set = FloorplanSVG(
-    data_path, 
-    'val.txt', 
-    format=format, 
-    augmentations=val_aug
-)
-
-print('Train set size:', len(train_set))
-print('Validation set size:', len(val_set))
-
-train_loader = DataLoader(
-    train_set, 
-    batch_size=BATCH_SIZE, 
-    num_workers=NUM_WORKERS, 
-    shuffle=True, 
-    pin_memory=True
-)
-
-val_loader = DataLoader(
-    val_set, 
-    batch_size=BATCH_SIZE, 
-    num_workers=NUM_WORKERS,
-    shuffle=False,
-    pin_memory=True
-)
-
-# print(f'Length of train dataloader: {len(train_loader)} batches of size {BATCH_SIZE}')
-# print(f'Length of val dataloader: {len(val_loader)} batches of size {BATCH_SIZE}')
-
-# batch_sample = next(iter(train_loader))
-# print('\nBatch image shape: ', batch_sample['image'].shape)
-# print('Batch label shape: ', batch_sample['label'].shape)
-
+train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True, pin_memory=True)
+val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False, pin_memory=True)
 
 # Model Setup
 model = DeepLabV3Plus(backbone=BACKBONE, attention=USE_ATTENTION).to(device)
 
-# summary(model, input_size=(BATCH_SIZE, 3, IMAGE_SIZE[0], IMAGE_SIZE[1]))
-
 if USE_ATTENTION:
-    print(f'Model Loaded: DeepLabV3+ with {BACKBONE} backbone and CA + SA modules\n')
+    print(f'Model: DeepLabV3+ with {BACKBONE} backbone and CA + SA modules\n')
 else:
-    print(f'Model Loaded: DeepLabV3+ with {BACKBONE} backbone and no attention modules\n')
-
+    print(f'Model: DeepLabV3+ with {BACKBONE} backbone and no attention modules\n')
 
 # Loss functions
 room_criterion = nn.CrossEntropyLoss()
 icon_criterion = nn.CrossEntropyLoss()
 heatmap_criterion = nn.MSELoss()
-multitask_criterion = MultiTaskUncertaintyLoss(num_tasks=3).to(device)
+multitask_criterion = MultiTaskUncertaintyLoss().to(device)
 
 # These are based on CubiCasa5k training setup
-optimizer = optim.Adam(model.parameters(), lr=INITIAL_LR, betas=(0.9, 0.999), eps=1e-8)
+# Weight decay to prevent overfitting
+optimizer = optim.Adam(model.parameters(), lr=INITIAL_LR, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.0001)
+
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=20)
 
-
 # Load best model checkpoint if available or train from scratch
-checkpoint_path = f'saved_models/best_checkpoint_{model.backbone_name}_{model.attention}.pt'
+checkpoint_path = f'saved_models/dlv3p_{model.backbone_name}_{model.attention}.pt'
 
 if RELOAD_BEST_MODEL and os.path.exists(checkpoint_path):
     checkpoint = torch.load(checkpoint_path)
@@ -166,7 +120,6 @@ else:
     best_val_loss = float('inf')
     start_epoch = 0
     print("Starting training from scratch\n")
-
 
 # Evaluation metrics
 room_metrics = MetricCollection({
@@ -182,7 +135,7 @@ icon_metrics = MetricCollection({
 }).to(device)
 
 
-def train(model, dataloader, optimizer, device):
+def train_epoch(model, dataloader, optimizer, device):
     model.train()
     total_loss = 0.0
 
@@ -201,35 +154,19 @@ def train(model, dataloader, optimizer, device):
         room_loss = room_criterion(room_output, room_labels)
         icon_loss = icon_criterion(icon_output, icon_labels)
         heatmap_loss = heatmap_criterion(heatmap_output, heatmap_labels)
-
-        combined_loss = multitask_criterion([room_loss, icon_loss, heatmap_loss])
+        multitask_loss = multitask_criterion([room_loss, icon_loss, heatmap_loss])
 
         # Backward pass and optimization
-        combined_loss.backward()
+        multitask_loss.backward()
         optimizer.step()
 
-        total_loss += combined_loss.item()
+        total_loss += multitask_loss.item()
 
-        # Get model predictions
-        room_preds = torch.argmax(room_output, dim=1)
-        icon_preds = torch.argmax(icon_output, dim=1)
-
-        # By batch
-        room_metrics.update(room_preds, room_labels)
-        icon_metrics.update(icon_preds, icon_labels)
-
-    # By epoch
     epoch_loss = total_loss / len(dataloader)
-    epoch_room_metrics = room_metrics.compute()
-    epoch_icon_metrics = icon_metrics.compute()
-
-    room_metrics.reset()
-    icon_metrics.reset()
-
-    return epoch_loss, epoch_room_metrics, epoch_icon_metrics
+    return epoch_loss
 
 
-def validate(model, dataloader, device):
+def validate_epoch(model, dataloader, device):
     model.eval()
     total_loss = 0.0
 
@@ -266,53 +203,64 @@ def validate(model, dataloader, device):
 
 
 if __name__ == '__main__':
-    # Setup logging
-    log_dir = 'logs'
-    os.makedirs(log_dir, exist_ok=True)
-
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    log_filename = f"{model.backbone_name}_{model.attention}_{timestamp}.log"
-    log_filepath = os.path.join(log_dir, log_filename)
+    FILE_NAME = f"deeplab_{model.backbone_name}_{model.attention}_{timestamp}"
+
+    # Setup logging
+    os.makedirs('logs', exist_ok=True)
+
+    log_filename = f"{FILE_NAME}.log"
+    log_filepath = os.path.join('logs', log_filename)
 
     logging.basicConfig(filename=log_filepath, level=logging.INFO,format='%(asctime)s - %(message)s')
     logging.info(f'Logging training for DeepLabV3+ with {BACKBONE} backbone and attention: {USE_ATTENTION}\n')
 
-    # Setup for training and validation
+    # TRAINING AND VALIDATION LOOP
+    train_loss_history = []
+    val_loss_history = []
+    room_mpa_history = []
+    room_miou_history = []
+    room_fwiou_history = []
+    icon_mpa_history = []
+    icon_miou_history = []
+    icon_fwiou_history = []
+
     lr_dropped = False
-    early_stopping_patience = 30
     early_stopping_counter = 0
+    early_stopping_patience = 30
 
     for epoch in range(start_epoch, EPOCHS):
         print(f"EPOCH {epoch+1}/{EPOCHS}")
 
-        train_loss, train_room_metrics, train_icon_metrics = train(model, train_loader, optimizer, device)
-        val_loss, val_room_metrics, val_icon_metrics = validate(model, val_loader, device)
+        # Get loss and metrics
+        train_loss = train_epoch(model, train_loader, optimizer, device)
+        val_loss, val_room_metrics, val_icon_metrics = validate_epoch(model, val_loader, device)
 
-        train_room_mpa = train_room_metrics['mpa'].item()
-        train_room_miou = train_room_metrics['miou'].item()
-        train_room_fwiou = train_room_metrics['fwiou'].item()
+        # Get actual values for each metric
+        room_mpa = val_room_metrics['mpa'].item()
+        room_miou = val_room_metrics['miou'].item()
+        room_fwiou = val_room_metrics['fwiou'].item()
 
-        train_icon_mpa = train_icon_metrics['mpa'].item()
-        train_icon_miou = train_icon_metrics['miou'].item()
-        train_icon_fwiou = train_icon_metrics['fwiou'].item()
+        icon_mpa = val_icon_metrics['mpa'].item()
+        icon_miou = val_icon_metrics['miou'].item()
+        icon_fwiou = val_icon_metrics['fwiou'].item()
 
-        val_room_mpa = val_room_metrics['mpa'].item()
-        val_room_miou = val_room_metrics['miou'].item()
-        val_room_fwiou = val_room_metrics['fwiou'].item()
+        # Save metrics to history for plotting
+        train_loss_history.append(train_loss)
+        val_loss_history.append(val_loss)
+        room_mpa_history.append(room_mpa)
+        room_miou_history.append(room_miou)
+        room_fwiou_history.append(room_fwiou)
+        icon_mpa_history.append(icon_mpa)
+        icon_miou_history.append(icon_miou)
+        icon_fwiou_history.append(icon_fwiou)
 
-        val_icon_mpa = val_icon_metrics['mpa'].item()
-        val_icon_miou = val_icon_metrics['miou'].item()
-        val_icon_fwiou = val_icon_metrics['fwiou'].item()
-
+        # Log results for this epoch
         log_message = (
-            f"\nTRAIN RESULTS\n"
-            f"Loss: {train_loss:.4f}\n"
-            f"Rooms - mPA: {train_room_mpa:.4f}, mIoU: {train_room_miou:.4f}, fwIoU: {train_room_fwiou:.4f}\n"
-            f"Icons - mPA: {train_icon_mpa:.4f}, mIoU: {train_icon_miou:.4f}, fwIoU: {train_icon_fwiou:.4f}\n"
-            f"\nVALIDATION RESULTS\n"
-            f"Loss: {val_loss:.4f}\n"
-            f"Rooms - mPA: {val_room_mpa:.4f}, mIoU: {val_room_miou:.4f}, fwIoU: {val_room_fwiou:.4f}\n"
-            f"Icons - mPA: {val_icon_mpa:.4f}, mIoU: {val_icon_miou:.4f}, fwIoU: {val_icon_fwiou:.4f}\n"
+            f'Train Loss: {train_loss:.4f}\n'
+            f'Val Loss:   {val_loss:.4f}\n'
+            f'Rooms - mPA: {room_mpa:.4f}, mIoU: {room_miou:.4f}, fwIoU: {room_fwiou:.4f}\n'
+            f'Icons - mPA: {icon_mpa:.4f}, mIoU: {icon_miou:.4f}, fwIoU: {icon_fwiou:.4f}\n'
         )
         logging.info(log_message)
         print(log_message)
@@ -333,7 +281,6 @@ if __name__ == '__main__':
             save_msg = f'\nBest model saved with validation loss: {best_val_loss:.4f}'
             print(save_msg)
             logging.info(save_msg)
-
         else:
             early_stopping_counter += 1
             not_improved_msg = f'\nValidation loss did not improve. Best loss is still: {best_val_loss:.4f}'
@@ -342,7 +289,7 @@ if __name__ == '__main__':
 
         # Activate early stopping if no improvement for specific epochs
         if early_stopping_counter >= early_stopping_patience:
-            early_stop_msg = f'\nEarly stopping triggered after {epoch+1} epochs'
+            early_stop_msg = f'\nEarly stopping triggered after {epoch + 1} epochs'
             print(early_stop_msg)
             logging.info(early_stop_msg)
             break
@@ -363,3 +310,58 @@ if __name__ == '__main__':
             logging.info(reload_best_msg)
 
         print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+
+    # Visualize training and validation results and save to PDF
+    os.makedirs('visualizations', exist_ok=True)
+    pdf_filepath = os.path.join('visualizations', f"{FILE_NAME}.pdf")
+
+    with PdfPages(pdf_filepath) as pdf:
+        # Training vs Validation Loss
+        plt.figure(figsize=(10, 6))
+        plt.plot(train_loss_history, label='Train Loss')
+        plt.plot(val_loss_history, label='Val Loss')
+        plt.title('Training vs Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.grid(True)
+        pdf.savefig()
+        plt.close()
+
+        # Room vs Icon mPA
+        plt.figure(figsize=(10, 6))
+        plt.plot(room_mpa_history, label='Room mPA')
+        plt.plot(icon_mpa_history, label='Icon mPA')
+        plt.title('Room vs Icon Mean Pixel Accuracy')
+        plt.xlabel('Epochs')
+        plt.ylabel('mPA')
+        plt.legend()
+        plt.grid(True)
+        pdf.savefig()
+        plt.close()
+
+        # Room vs Icon mIoU
+        plt.figure(figsize=(10, 6))
+        plt.plot(room_miou_history, label='Room mIoU')
+        plt.plot(icon_miou_history, label='Icon mIoU')
+        plt.title('Room vs Icon Mean Intersection over Union')
+        plt.xlabel('Epochs')
+        plt.ylabel('Mean IoU')
+        plt.legend()
+        plt.grid(True)
+        pdf.savefig()
+        plt.close()
+
+        # Room vs Icon fwIoU
+        plt.figure(figsize=(10, 6))
+        plt.plot(room_fwiou_history, label='Room fwIoU')
+        plt.plot(icon_fwiou_history, label='Icon fwIoU')
+        plt.title('Room vs Icon Frequency-Weighted IoU')
+        plt.xlabel('Epochs')
+        plt.ylabel('fwIoU')
+        plt.legend()
+        plt.grid(True)
+        pdf.savefig()
+        plt.close()
+
+    print('Training completed successfully!')

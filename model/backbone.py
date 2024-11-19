@@ -1,30 +1,29 @@
 import torch.nn as nn
 import torchvision
-import timm
-from torchvision.models import mobilenet_v2, resnet50, MobileNet_V2_Weights, ResNet50_Weights
+from torchvision.models import mobilenet_v2, mobilenet_v3_large, resnet50, MobileNet_V2_Weights, MobileNet_V3_Large_Weights, ResNet50_Weights
 
 
 class Backbone(nn.Module):
-    def __init__(self, backbone="xception"):
+    def __init__(self, backbone="mobilenet_v2"):
         super().__init__()
 
-        if backbone == "resnet50":
-            self.backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
-            self.low_level_channels = 256
-            self.high_level_channels = 2048
-
-        elif backbone == "mobilenetv2":
+        if backbone == "mobilenet_v2":
             self.backbone = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
             self.low_level_channels = 24
             self.high_level_channels = 1280
 
-        elif backbone == "xception":
-            self.backbone = timm.create_model("xception65", pretrained=True, features_only=True)
-            self.low_level_channels = self.backbone.feature_info.channels()[1]
-            self.high_level_channels = self.backbone.feature_info.channels()[-1]
+        elif backbone == "mobilenet_v3":
+            self.backbone = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT)
+            self.low_level_channels = 40
+            self.high_level_channels = 960
+
+        elif backbone == "resnet50":
+            self.backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
+            self.low_level_channels = 256
+            self.high_level_channels = 2048
 
         else:
-            raise ValueError("Unsupported backbone: Choose either 'xception', 'resnet50' or 'mobilenetv2'")
+            raise ValueError("Unsupported backbone: Choose either 'mobilenet_v2', 'mobilenet_v3', or 'resnet50'")
 
     def forward(self, x):
         if isinstance(self.backbone, torchvision.models.ResNet):
@@ -41,15 +40,13 @@ class Backbone(nn.Module):
             x = self.backbone.layer3(x)
             high_level_features = self.backbone.layer4(x)
 
-        elif isinstance(self.backbone, torchvision.models.MobileNetV2):
-            features = self.backbone.features
-            low_level_features = features[:4](x) # 4th inverted residual block
-            high_level_features = features[4:](low_level_features)  # 17th inverted residual block
+        elif isinstance(self.backbone, torchvision.models.MobileNetV3):
+            low_level_features = self.backbone.features[:5](x)
+            high_level_features = self.backbone.features[5:](low_level_features)
 
         else:
-            # Xception
-            features = self.backbone(x)
-            low_level_features = features[1]
-            high_level_features = features[-1]
-            
+            features = self.backbone.features
+            low_level_features = features[:4](x)
+            high_level_features = features[4:](low_level_features)
+
         return low_level_features, high_level_features

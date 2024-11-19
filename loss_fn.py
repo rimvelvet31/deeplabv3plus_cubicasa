@@ -2,28 +2,24 @@ import torch
 import torch.nn as nn
 
 class MultiTaskUncertaintyLoss(nn.Module):
-    def __init__(self, num_tasks=2):
+    def __init__(self, num_tasks=3):
         super().__init__()
-
-        # Learnable parameter for each task
-        self.log_sigma = nn.Parameter(torch.zeros(num_tasks))
-
+        self.log_sigma = nn.Parameter(torch.zeros(num_tasks)) # Learnable parameter for each task
 
     def forward(self, losses):
-        """
-        Forward pass to compute the total multi-task loss.
-        Args:
-            losses (list of tensors): List of individual task losses.
-        Returns:
-            total_loss (tensor): The final weighted multi-task loss.
-        """
-
-        # Tensor to avoid issues with autograd
+        # Used tensor to avoid issues with autograd
         total_loss = torch.tensor(0.0, requires_grad=True).to(losses[0].device)
 
+        # Normalize losses so that they are in the same range (alternatively, can also use scaling)
+        # normalized_losses = [loss / torch.max(loss) for loss in losses]
+
         for i, loss in enumerate(losses):
-            precision_weight = torch.exp(-self.log_sigma[i])
-            task_loss = precision_weight * loss + self.log_sigma[i]
+            # For numerical stability
+            clamped_log_sigma = torch.clamp(self.log_sigma[i], min=-10, max=10)
+
+            precision_weight = torch.exp(-clamped_log_sigma)
+            task_loss = precision_weight * loss + clamped_log_sigma
             total_loss = total_loss + task_loss
         
         return total_loss
+    

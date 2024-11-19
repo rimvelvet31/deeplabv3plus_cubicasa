@@ -7,7 +7,7 @@ from PIL import Image
 
 from icecream import ic
 
-from utils import load_model, load_dataset, load_img_and_labels, evaluate
+from loss_fn import load_model, load_dataset, load_img_and_labels, evaluate
 
 
 class MainInterface():
