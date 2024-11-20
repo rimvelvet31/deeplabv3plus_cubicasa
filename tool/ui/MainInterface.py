@@ -27,7 +27,10 @@ class MainInterface():
 
         self.root = root
 
-        self.dataset = load_dataset('C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/data/cubicasa5k/')
+        red = 'C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/data/cubicasa5k/'
+        me = ''
+
+        # self.dataset = load_dataset(red)
         
         main_frame = self._initializeMainFrame(root)
         self._loadContents(main_frame);
@@ -160,7 +163,7 @@ class MainInterface():
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         model = load_model(
-            f'C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt', 
+            f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
             use_attention=False if self.model_to_use == 0 else True, device=device)
         
         print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")

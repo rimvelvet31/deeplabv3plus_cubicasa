@@ -1,6 +1,9 @@
 import os
 
-BASE_PATH = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
+red = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
+me = "D:/GitHub/deepl_lab/tool/assets"
+
+BASE_PATH = me
 
 class COLOR_PRESETS():
     BG_COLOR = "#090d12"
