@@ -14,8 +14,8 @@ class RootUI(CTk):
         self.RECONSTRUCTION = RECONSTRUCTION
 
     def createRoot(self):
-        self.minsize(400, 650)
-        self.maxsize(400, 650)
+        self.minsize(600, 550)
+        self.maxsize(600, 550)
         self.config(bg=self.PATHS.COLOR_PRESETS.BG_COLOR)
         self.winfo_toplevel().title("3D Model Generation")
     

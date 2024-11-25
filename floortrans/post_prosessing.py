@@ -15,7 +15,7 @@ def get_wall_polygon(wall_heatmaps, room_segmentation, threshold, wall_classes, 
     wall_lines, wall_points, wall_point_orientation_lines_map = get_wall_lines(wall_heatmaps, room_segmentation, threshold, wall_classes, point_orientations, orientation_ranges)
 
     walls = np.empty([0, 4, 2], int)
-    types = [] 
+    types = []
     wall_lines_new = []
     
     for indx, i in enumerate(wall_lines):
