@@ -131,7 +131,7 @@ class MainInterface():
         
         uploaded_image = Image.open(selected_floorplan)
         
-        button_width = button_widget.winfo_width()
+        button_width = button_widget.winfo_width() - 65
         width, height = uploaded_image.size
         new_height = int((height * button_width) / width)
 
