@@ -15,6 +15,7 @@ class IMAGE_PATHS():
     EXPORT_ICON = os.path.join(BASE_PATH, "export_icon.png")
     SEE_DETAILS_ICON = os.path.join(BASE_PATH, "see_details_icon.png")
     COMPARE_IMAGE_ICON = os.path.join(BASE_PATH, "compare_image_icon.png")
+    MAP_ICON = os.path.join(BASE_PATH, "map_icon.png")
     
 class OUTPUT():
     PYTORCH_VALUES = "D:/JECKO/anything besides games/programming projs/pythonproj/THESIS/deeplab/floorplan_pred256.pt"
