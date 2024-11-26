@@ -8,6 +8,7 @@ import math
 import torch
 from torch.nn.functional import sigmoid, softmax, interpolate
 from skimage import draw
+from skimage import transform
 from floortrans import post_prosessing
 from floortrans.loaders.augmentations import RotateNTurns
 from floortrans.plotting import shp_mask
@@ -86,7 +87,7 @@ def up_sample_predictions(pred, size):
     # Don't understand why
     pred = transform.resize(pred, (pred_count, channels, height, width),
                             order=3, mode='constant', anti_aliasing=False)
-
+    
     return pred
 
 
