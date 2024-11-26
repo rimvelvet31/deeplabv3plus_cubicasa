@@ -104,13 +104,10 @@ class Decoder(nn.Module):
             self.sa = SpatialAttention()
 
         # Shared decoder for segmentation and heatmap heads
-        # 256 (ASPP output) + 48 (low-level features) = 304 channels
-        self.shared_decoder = DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1)
-        
-        # nn.Sequential(
-        #     DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1),
-        #     DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
-        # )
+        self.conv3x3 = nn.Sequential(
+            DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1), # 256 (ASPP output) + 48 (low-level features)
+            DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1)
+        )
 
         # Room segmentation head
         self.room_head = nn.Conv2d(256, num_room_classes, kernel_size=1)
@@ -142,7 +139,7 @@ class Decoder(nn.Module):
         concat = torch.cat([first_upsampling, low_level], dim=1)
 
         # Shared by segmentation and heatmap heads
-        decoder_output = self.shared_decoder(concat)
+        decoder_output = self.conv3x3(concat)
 
         # Room prediction
         room_output = nn.functional.interpolate(
@@ -168,7 +165,7 @@ class Decoder(nn.Module):
             align_corners=True
         )
         
-        # Aligns with CubiCasa outputs (2 segmentation maps + 21 heatmaps)
+        # CubiCasa outputs (2 segmentation maps + 21 heatmaps)
         return room_output, icon_output, heatmap_output
 
 
