@@ -106,6 +106,7 @@ class Decoder(nn.Module):
         # Shared decoder for segmentation and heatmap heads
         self.conv3x3 = nn.Sequential(
             DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1), # 256 (ASPP output) + 48 (low-level features)
+            DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
             DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1)
         )
 

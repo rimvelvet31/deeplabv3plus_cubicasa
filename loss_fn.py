@@ -1,5 +1,26 @@
 import torch
 import torch.nn as nn
+import numpy as np
+from tqdm import tqdm
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def calculate_class_weights(loader, num_classes, label_index):
+    """Calculate class weights based on the inverse frequency of each class."""
+    class_counts = np.zeros(num_classes)
+    
+    # Count the number of occurrences of each class
+    for batch in tqdm(loader, desc="Calculating class weights"):
+        labels = batch['label'][:, label_index].numpy().flatten()
+        for i in range(num_classes):
+            class_counts[i] += np.sum(labels == i)
+    
+    # Inverse frequency weighting
+    class_weights = 1.0 / (class_counts + 1e-6)
+    class_weights /= np.sum(class_weights)  # Normalize weights
+
+    return torch.tensor(class_weights, dtype=torch.float32).to(device)
+
 
 class MultiTaskUncertaintyLoss(nn.Module):
     def __init__(self, num_tasks=3):
