@@ -20,7 +20,7 @@ from floortrans.loaders.augmentations import (Compose,
                                               ColorJitterTorch)
 
 from model.deeplabv3plus import DeepLabV3Plus
-from loss_fn import MultiTaskUncertaintyLoss
+from loss_fn import calculate_class_weights, MultiTaskUncertaintyLoss
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -36,6 +36,9 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
     print('Using device: CPU')
+
+# Clear cache to prevent CUDA out of memory errors
+torch.cuda.empty_cache()
 
 # Parse command line arguments for setting hyperparameters
 parser = argparse.ArgumentParser(description='Train DeepLabV3+ on the CubiCasa5k dataset')
@@ -60,11 +63,11 @@ RELOAD_BEST_MODEL = args.reload_best_model
 
 # Preprocessing and Augmentations
 train_aug = Compose([
-    RandomChoice([
-        RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
-        ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
-    ]),
-    # ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
+    # RandomChoice([
+    #     RandomCropToSizeTorch(data_format='dict', size=IMAGE_SIZE),
+    #     ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE)
+    # ]),
+    ResizePaddedTorch((0, 0), data_format='dict', size=IMAGE_SIZE),
     RandomRotations(format='cubi'),
     DictToTensor(),
     ColorJitterTorch(b_var=0.1, c_var=0.1, s_var=0.1)
@@ -94,10 +97,21 @@ else:
     print(f'Model: DeepLabV3+ with {BACKBONE} backbone and no attention modules\n')
 
 # Loss functions
-room_criterion = nn.CrossEntropyLoss()
-icon_criterion = nn.CrossEntropyLoss()
+# room_class_weights = calculate_class_weights(train_loader, num_classes=12, label_index=21)
+# icon_class_weights = calculate_class_weights(train_loader, num_classes=11, label_index=22)
+# print(f'Room class weights: {room_class_weights}')
+# print(f'Icon class weights: {icon_class_weights}\n')
+
+# Computed from earlier to avoid recomputing on every run
+room_class_weights = torch.tensor([0.0020, 0.0290, 0.0175, 0.0297, 0.0168, 0.0191, 
+                                   0.0627, 0.0437, 0.4499,0.1118, 0.2035, 0.0144]).to(device)
+icon_class_weights = torch.tensor([4.6019e-05, 4.1143e-03, 9.0201e-03, 3.1095e-03, 6.7754e-03, 2.8754e-02,
+                                   1.6963e-02, 9.4359e-03, 6.6047e-02, 1.0371e-01, 7.5203e-01]).to(device)
+
+room_criterion = nn.CrossEntropyLoss(weight=room_class_weights)
+icon_criterion = nn.CrossEntropyLoss(weight=icon_class_weights)
 heatmap_criterion = nn.MSELoss()
-multitask_criterion = MultiTaskUncertaintyLoss().to(device)
+multitask_criterion = MultiTaskUncertaintyLoss()
 
 # These are based on CubiCasa5k training setup
 # Weight decay to prevent overfitting
