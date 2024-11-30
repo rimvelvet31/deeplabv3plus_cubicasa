@@ -27,7 +27,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 
 # Set seed for reproducibility
-torch.manual_seed(1)
+torch.manual_seed(0)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # Use GPU if available
 if torch.cuda.is_available():
