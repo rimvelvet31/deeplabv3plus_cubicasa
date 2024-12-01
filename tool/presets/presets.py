@@ -1,7 +1,7 @@
 import os
 
 red = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
-me = "D:/GitHub/deepl_lab/tool/assets"
+me = r"D:\GitHub\deepl_lab\tool\assets"
 
 BASE_PATH = me
 
