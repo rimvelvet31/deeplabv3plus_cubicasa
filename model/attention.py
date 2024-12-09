@@ -11,9 +11,15 @@ class ChannelAttention(nn.Module):
         # Shared MLP
         self.mlp = nn.Sequential(
             nn.Linear(in_channels, in_channels // reduction_ratio),
-            nn.ReLU(inplace=True),
-            nn.Linear(in_channels // reduction_ratio, in_channels)
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(in_channels // reduction_ratio, in_channels // 2),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(in_channels // 2, in_channels)
         )
+
+        # Initializes weights
+        nn.init.kaiming_normal_(self.mlp[0].weight, mode='fan_out', nonlinearity='leaky_relu')
+        nn.init.kaiming_normal_(self.mlp[2].weight, mode='fan_out', nonlinearity='leaky_relu')
 
         # Pushes output to 0 or 1
         self.sigmoid = nn.Sigmoid()
@@ -32,7 +38,7 @@ class ChannelAttention(nn.Module):
         attention_weights = self.sigmoid(combined).view(x.size(0), x.size(1), 1, 1)
 
         # Element-wise multiplication with input to get final feature map
-        return attention_weights * x
+        return x * attention_weights + x
 
 
 class SpatialAttention(nn.Module):
@@ -41,6 +47,10 @@ class SpatialAttention(nn.Module):
 
         # 7x7 convolution and sigmoid activation
         self.conv = nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False)
+
+        # Initializes weight
+        nn.init.xavier_normal_(self.conv.weight)
+
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
@@ -55,4 +65,4 @@ class SpatialAttention(nn.Module):
         attention_map = self.conv(combined)
         attention_weights = self.sigmoid(attention_map)
 
-        return attention_weights * x
+        return x * attention_weights + x
