@@ -4,7 +4,10 @@ from torchvision.models import (mobilenet_v2, MobileNet_V2_Weights,
                                 mobilenet_v3_large, MobileNet_V3_Large_Weights,
                                 resnet50, ResNet50_Weights,
                                 efficientnet_b2, EfficientNet_B2_Weights,
-                                efficientnet_v2_s, EfficientNet_V2_S_Weights)
+                                efficientnet_b3, EfficientNet_B3_Weights,
+                                efficientnet_v2_s, EfficientNet_V2_S_Weights,
+                                efficientnet_v2_m, EfficientNet_V2_M_Weights,)
+                               
 
 class Backbone(nn.Module):
     def __init__(self, backbone="mobilenet_v2"):
@@ -31,12 +34,22 @@ class Backbone(nn.Module):
             self.backbone = efficientnet_b2(weights=EfficientNet_B2_Weights.DEFAULT)
             self.low_level_channels = 24
             self.high_level_channels = 1408
-        
+
+        elif backbone == "efficientnet_b3":
+            self.backbone = efficientnet_b3(weights=EfficientNet_B3_Weights.DEFAULT)
+            self.low_level_channels = 32
+            self.high_level_channels = 1536
+
         elif backbone == "efficientnet_v2_s":
             self.backbone = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT)
-            self.low_level_channels = 24
+            self.low_level_channels = 48
             self.high_level_channels = 1280
 
+        elif backbone == "efficientnet_v2_m":
+            self.backbone = efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
+            self.low_level_channels = 24
+            self.high_level_channels = 1280
+        
         else:
             raise ValueError("Unsupported backbone")
 
@@ -61,8 +74,20 @@ class Backbone(nn.Module):
             low_level_features = features[:3](x)
             high_level_features = features[3:](low_level_features)
 
+        # EfficientNet-B3
+        elif self.backbone_name == "efficientnet_b3":
+            features = self.backbone.features
+            low_level_features = features[:3](x)
+            high_level_features = features[3:](low_level_features)
+
         # EfficientNetV2-S
         elif self.backbone_name == "efficientnet_v2_s":
+            features = self.backbone.features
+            low_level_features = features[:3](x)
+            high_level_features = features[3:](low_level_features)
+
+        # EfficientNetV2-M
+        elif self.backbone_name == "efficientnet_v2_m":
             features = self.backbone.features
             low_level_features = features[:2](x)
             high_level_features = features[2:](low_level_features)
