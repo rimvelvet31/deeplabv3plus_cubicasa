@@ -3,6 +3,7 @@ import os
 import pickle
 import argparse
 import logging
+import torch
 import numpy as np
 from datetime import datetime
 from tqdm import tqdm
@@ -21,6 +22,11 @@ def main(args, logger):
         for d in tqdm(data):
             key = d['folder']
             logger.info("Adding " + key)
+
+            # Convert to uint8 to save space
+            d['image'] = torch.tensor(d['image'].numpy()).to(torch.uint8)
+            d['label'] = torch.tensor(d['label'].numpy()).to(torch.uint8)
+
             with env.begin(write=True, buffers=True) as txn:
                 txn.put(key.encode('ascii'), pickle.dumps(d))
     else:
@@ -31,6 +37,10 @@ def main(args, logger):
                 if not elem:
                     logger.info("Adding " + f)
                     elem = data[i]
+
+                    elem['image'] = torch.tensor(elem['image'].numpy()).to(torch.uint8)
+                    elem['label'] = torch.tensor(elem['label'].numpy()).to(torch.uint8)
+
                     txn.put(f.encode('ascii'), pickle.dumps(elem))
                 else:
                     logger.info(f + ' already exists')
