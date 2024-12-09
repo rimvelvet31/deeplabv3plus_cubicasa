@@ -3,6 +3,15 @@ import torch.nn as nn
 from .backbone import Backbone
 from .attention import ChannelAttention, SpatialAttention
 
+# Set manual seed for reproducibility
+seed = 0
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+# DROPOUT_RATE = 0.3
 
 class DepthwiseSeparableConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, dilation=1):
@@ -32,7 +41,13 @@ class AtrousConv(nn.Module):
     def __init__(self, in_channels, out_channels, dilation, use_attention=False):
         super().__init__()
 
-        self.atrous_conv = DepthwiseSeparableConv(in_channels, out_channels, kernel_size=3, padding=dilation, dilation=dilation)
+        self.atrous_conv = DepthwiseSeparableConv(
+            in_channels, 
+            out_channels, 
+            kernel_size=3, 
+            padding=dilation, 
+            dilation=dilation
+        )
 
         # Channel Attention module
         self.use_attention = use_attention
@@ -68,11 +83,12 @@ class ASPP(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-        # Projection layer
+        # Projection layer (combine ASPP layers)
         self.project = nn.Sequential(
             nn.Conv2d(out_channels * 5, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            # nn.Dropout2d(p=DROPOUT_RATE)
         )
 
     def forward(self, x):
@@ -95,7 +111,8 @@ class Decoder(nn.Module):
         self.low_level_projection = nn.Sequential(
             nn.Conv2d(low_level_channels, 48, kernel_size=1, bias=False),
             nn.BatchNorm2d(48),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            # nn.Dropout2d(p=DROPOUT_RATE)
         )
 
         # Spatial attention module
@@ -106,7 +123,9 @@ class Decoder(nn.Module):
         # Shared decoder for segmentation and heatmap heads
         self.conv3x3 = nn.Sequential(
             DepthwiseSeparableConv(304, 256, kernel_size=3, padding=1), # 256 (ASPP output) + 48 (low-level features)
+            # nn.Dropout2d(p=DROPOUT_RATE),
             DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1),
+            # nn.Dropout2d(p=DROPOUT_RATE),
             DepthwiseSeparableConv(256, 256, kernel_size=3, padding=1)
         )
 
@@ -125,7 +144,7 @@ class Decoder(nn.Module):
         low_level_size = low_level.size()[2:]
 
         # First upsampling
-        first_upsampling = nn.functional.interpolate(
+        upsample1 = nn.functional.interpolate(
             aspp_output, 
             size=low_level_size, 
             mode="bilinear", 
@@ -134,10 +153,10 @@ class Decoder(nn.Module):
         
         # Spatial attention module
         if self.use_attention:
-            first_upsampling = self.sa(first_upsampling)
+            upsample1 = self.sa(upsample1)
         
         # Concatenate high-level and low-level features
-        concat = torch.cat([first_upsampling, low_level], dim=1)
+        concat = torch.cat([upsample1, low_level], dim=1)
 
         # Shared by segmentation and heatmap heads
         decoder_output = self.conv3x3(concat)
