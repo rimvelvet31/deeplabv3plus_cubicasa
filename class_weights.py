@@ -41,17 +41,19 @@ def calculate_class_weights(dataset, num_classes, label_index, use_log=True, dev
     return torch.tensor(class_weights, dtype=torch.float32).to(device)
 
 
-
 if __name__ == "__main__":
+    img_size = 256
+    print("Image size:", img_size)
+
     aug = Compose([
-        ResizePaddedTorch((0, 0), data_format='dict', size=(256, 256)),
+        ResizePaddedTorch((0, 0), data_format='dict', size=(img_size, img_size)),
         DictToTensor()
     ])
     
     dataset = FloorplanSVG('data/cubicasa5k/', 'train.txt', format='lmdb', augmentations=aug)
     
-    room_weights = calculate_class_weights(dataset, num_classes=12, label_index=21, use_log=True)
-    icon_weights = calculate_class_weights(dataset, num_classes=11, label_index=22, use_log=True)
+    room_weights = calculate_class_weights(dataset, num_classes=12, label_index=21, use_log=False)
+    icon_weights = calculate_class_weights(dataset, num_classes=11, label_index=22, use_log=False)
 
     print("Room class weights:", room_weights)
     print("Icon class weights:", icon_weights)

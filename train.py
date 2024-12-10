@@ -50,9 +50,11 @@ parser.add_argument('--bs', type=int, default=32, help='Batch size (default: 32)
 parser.add_argument('--workers', type=int, default=0, help='Number of data loading workers (default: 0)')
 parser.add_argument('--backbone', type=str, default='mobilenet_v2', help='Backbone for DeepLabV3+ (default: mobilenet_v2)')
 parser.add_argument('--attention', action='store_true', help='Use CA and SA modules (default: False)')
-parser.add_argument('--epochs', type=int, default=200, help='Number of epochs to train (default: 200)')
+parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train (default: 400)')
+parser.add_argument('--loss', type=str, default='dice', help='Loss function (options: dice, weighted_dice, combo)')
 parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate (default: 0.001)')
-parser.add_argument('--wd', type=float, default=0.0005, help='Weight decay (default: 0.0005)')
+parser.add_argument('--wd', type=float, default=0.01, help='Weight decay (default: 0.01)')
+parser.add_argument('--scheduler', type=str, default='onecycle', help='Learning rate scheduler (options: onecycle, cawr)')
 parser.add_argument('--reload_best_model', action='store_true', help='Resume training from best model checkpoint (default: False)')
 args = parser.parse_args()
 
@@ -62,8 +64,10 @@ NUM_WORKERS = args.workers
 BACKBONE = args.backbone
 USE_ATTENTION = args.attention
 EPOCHS = args.epochs
+LOSS_FN = args.loss
 INITIAL_LR = args.lr
 WEIGHT_DECAY = args.wd
+SCHEDULER = args.scheduler
 RELOAD_BEST_MODEL = args.reload_best_model
 
 # Data Preprocessing and Augmentations
@@ -100,10 +104,13 @@ else:
 
 # Print hyperparameters
 print(model_msg)
+print(f'Image size: {IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}')
 print(f'Batch size: {BATCH_SIZE}')
 print(f'Number of workers: {NUM_WORKERS}')
 print(f'Initial learning rate: {INITIAL_LR}')
-print(f'Weight decay: {WEIGHT_DECAY}\n')
+print(f'Weight decay: {WEIGHT_DECAY}')
+print(f'Loss function: {LOSS_FN}')
+print(f'Scheduler: {SCHEDULER}\n')
 
 # Evaluation metrics
 room_metrics = MetricCollection({
@@ -118,24 +125,45 @@ icon_metrics = MetricCollection({
     'fwiou': JaccardIndex(task='multiclass', num_classes=11, average='weighted'),
 }).to(device)
 
-# Based on original img sizes
-# room_weights = torch.tensor([0.0184, 0.0757, 0.0657, 0.0805, 0.0659, 0.0678, 0.0997, 0.0885, 0.1477, 0.1109, 0.1213, 0.0578], device=device)
-# icon_weights = torch.tensor([0.0009, 0.0726, 0.0854, 0.0690, 0.0823, 0.1065, 0.0977, 0.0866, 0.1144, 0.1310, 0.1535], device=device)
-
-# Based on resized imgs (256x256)
-# room_weights = torch.tensor([0.0131, 0.0785, 0.0662, 0.0791, 0.0652, 0.0683, 0.0973, 0.0885, 0.1452, 0.1113, 0.1259, 0.0614], device=device)
-# icon_weights = torch.tensor([0.0008, 0.0734, 0.0861, 0.0689, 0.0815, 0.1048, 0.0963, 0.0868, 0.1183, 0.1256, 0.1576], device=device)
+# Assign class weights
+if IMAGE_SIZE[0] == 256:
+    # Based on resized imgs (256x256) - log scale of inverse class freqs
+    room_weights = torch.tensor([0.0131, 0.0785, 0.0662, 0.0791, 0.0652, 0.0683, 0.0973, 0.0885, 0.1452, 0.1113, 0.1259, 0.0614], device=device)
+    icon_weights = torch.tensor([0.0008, 0.0734, 0.0861, 0.0689, 0.0815, 0.1048, 0.0963, 0.0868, 0.1183, 0.1256, 0.1576], device=device)
+else:
+    # Based on resized imgs (512x512) - log scale of inverse class freqs
+    room_weights = torch.tensor([0.0128, 0.0785, 0.0664, 0.0792, 0.0654, 0.0684, 0.0974, 0.0885, 0.1450, 0.1112, 0.1255, 0.0616], device=device)
+    icon_weights = torch.tensor([0.0007, 0.0735, 0.0861, 0.0690, 0.0815, 0.1049, 0.0964, 0.0868, 0.1181, 0.1258, 0.1572], device=device)
 
 # Initialize loss functions
-room_criterion = DiceLoss().to(device)
-icon_criterion = DiceLoss().to(device)
+if LOSS_FN == 'dice':
+    room_criterion = DiceLoss().to(device)
+    icon_criterion = DiceLoss().to(device)
+elif LOSS_FN == 'weighted_dice':
+    room_criterion = DiceLoss(weights=room_weights).to(device)
+    icon_criterion = DiceLoss(weights=icon_weights).to(device)
+elif LOSS_FN == 'combo':
+    room_criterion = ComboLoss(weights=room_weights, alpha=0.5).to(device)
+    icon_criterion = ComboLoss(weights=icon_weights, alpha=0.1).to(device)
+else:
+    raise ValueError('Invalid loss function')
+
 heatmap_criterion = nn.MSELoss()
 multitask_criterion = MultiTaskUncertaintyLoss().to(device)
 
 # Weight decay to prevent overfitting
 optimizer = optim.AdamW(model.parameters(), lr=INITIAL_LR, weight_decay=WEIGHT_DECAY)
 
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+# Get from CLI arg
+if SCHEDULER == 'onecycle':
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=INITIAL_LR * 10, epochs=EPOCHS, steps_per_epoch=len(train_loader))
+elif SCHEDULER == 'cawr':
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+else:
+    raise ValueError('Invalid learning rate scheduler')
+
+# To speed up training
+scaler = torch.amp.GradScaler()
 
 # Load best model checkpoint if available or train from scratch
 checkpoint_path = f'saved_models/deeplab_{model.backbone_name}_{model.attention}.pt'
@@ -153,9 +181,6 @@ else:
     start_epoch = 0
     print("Starting training from scratch\n")
 
-# Use mixed precision training to to speed up training
-scaler = torch.amp.GradScaler()
-
 # Setup logging
 timestamp = time.strftime('%Y-%m-%d_%H-%M-%S')
 FILE_NAME = f'deeplab_{model.backbone_name}_{model.attention}_{timestamp}'
@@ -165,7 +190,16 @@ log_filepath = os.path.join('logs', f'{FILE_NAME}.log')
 logging.basicConfig(filename=log_filepath, level=logging.INFO,format='%(asctime)s - %(message)s')
 
 # Log hyperparameters
-hyperparams_msg = (f'\n{model_msg}Batch size: {BATCH_SIZE}\nNumber of workers: {NUM_WORKERS}\nInitial learning rate: {INITIAL_LR}\nWeight decay: {WEIGHT_DECAY}\n')
+hyperparams_msg = (
+    f'\n{model_msg}'
+    f'\nImage size: {IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}'
+    f'\nBatch size: {BATCH_SIZE}'
+    f'\nNumber of workers: {NUM_WORKERS}'
+    f'\nInitial learning rate: {INITIAL_LR}'
+    f'\nWeight decay: {WEIGHT_DECAY}'
+    f'\nLoss function: {LOSS_FN}'
+    f'\nScheduler: {SCHEDULER}\n'
+)
 logging.info(hyperparams_msg)
 
 # TRAINING AND VALIDATION LOOP
@@ -178,7 +212,6 @@ icon_mpa_history = []
 icon_miou_history = []
 icon_fwiou_history = []
 
-lr_dropped = False
 early_stopping_counter = 0
 early_stopping_patience = 20
 
@@ -188,25 +221,11 @@ for epoch in range(start_epoch, EPOCHS):
     logging.info(epoch_msg)
 
     # Get train & val loss and metrics
-    train_loss = train_epoch(model, 
-                             train_loader, 
-                             room_criterion, 
-                             icon_criterion, 
-                             heatmap_criterion, 
-                             multitask_criterion, 
-                             scaler, 
-                             optimizer, 
-                             device)
+    train_loss = train_epoch(model, train_loader, room_criterion, icon_criterion, 
+                             heatmap_criterion, multitask_criterion, scaler, optimizer, scheduler, device=device)
     
-    val_loss, val_room_metrics, val_icon_metrics = validate_epoch(model,
-                                                                  val_loader,
-                                                                  room_criterion,
-                                                                  icon_criterion,
-                                                                  heatmap_criterion,
-                                                                  multitask_criterion,
-                                                                  room_metrics,
-                                                                  icon_metrics,
-                                                                  device)
+    val_loss, val_room_metrics, val_icon_metrics = validate_epoch(model, val_loader, room_criterion, icon_criterion, 
+                                                                  heatmap_criterion, multitask_criterion, room_metrics, icon_metrics, device)
 
     # Get actual values for each metric
     room_mpa = val_room_metrics['mpa'].item()
@@ -229,10 +248,11 @@ for epoch in range(start_epoch, EPOCHS):
 
     # Log results for this epoch
     log_message = (
-        f'\nTrain Loss: {train_loss:.4f}\n'
-        f'Val Loss:   {val_loss:.4f}\n'
-        f'Rooms - mPA: {room_mpa:.4f}, mIoU: {room_miou:.4f}, fwIoU: {room_fwiou:.4f}\n'
-        f'Icons - mPA: {icon_mpa:.4f}, mIoU: {icon_miou:.4f}, fwIoU: {icon_fwiou:.4f}\n'
+        f'\nTrain Loss: {train_loss:.4f}'
+        f'\nVal Loss:   {val_loss:.4f}'
+        f'\nRooms - mPA: {room_mpa:.4f}, mIoU: {room_miou:.4f}, fwIoU: {room_fwiou:.4f}'
+        f'\nIcons - mPA: {icon_mpa:.4f}, mIoU: {icon_miou:.4f}, fwIoU: {icon_fwiou:.4f}'
+        f'\nLearning Rate: {scheduler.get_last_lr()[0]:.4f}\n'
     )
     logging.info(log_message)
     print(log_message)
@@ -259,27 +279,12 @@ for epoch in range(start_epoch, EPOCHS):
         print(not_improved_msg)
         logging.info(not_improved_msg)
 
-    # Activate early stopping if no improvement for specific epochs
+    # Activate early stopping if no improvement threshold is reached
     if early_stopping_counter == early_stopping_patience:
-        early_stop_msg = f'\nEarly stopping triggered after {epoch + 1} epochs'
+        early_stop_msg = f'\nEarly stopping triggered after {epoch} epochs'
         print(early_stop_msg)
         logging.info(early_stop_msg)
         break
-
-    # Check if LR was dropped
-    prev_lr = optimizer.param_groups[0]['lr']
-    scheduler.step(val_loss)
-    current_lr = optimizer.param_groups[0]['lr']
-
-    # Reload best model weights if LR was dropped
-    if current_lr < prev_lr and not lr_dropped:
-        lr_dropped = True
-        model.load_state_dict(torch.load(checkpoint_path)['model_state_dict'])
-        torch.cuda.empty_cache()
-
-        reload_best_msg = f'\nLR dropped to {current_lr}. Model weights reloaded with best validation loss: {best_val_loss:.4f}'
-        print(reload_best_msg)
-        logging.info(reload_best_msg)
 
     print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
 
