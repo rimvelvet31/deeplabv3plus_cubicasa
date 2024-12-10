@@ -21,7 +21,8 @@ def train_epoch(model,
                 heatmap_criterion, 
                 multitask_criterion, 
                 scaler, 
-                optimizer, 
+                optimizer,
+                scheduler,
                 device='cuda'):
     
     model.train()
@@ -56,6 +57,10 @@ def train_epoch(model,
         scaler.step(optimizer)
         scaler.update()
 
+        # Update learning rate
+        scheduler.step()
+
+        # Accumulate loss
         total_loss += multitask_loss.item()
 
     epoch_loss = total_loss / len(dataloader)
