@@ -11,27 +11,25 @@ class ChannelAttention(nn.Module):
         # Shared MLP
         self.mlp = nn.Sequential(
             nn.Linear(in_channels, in_channels // reduction_ratio),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(in_channels // reduction_ratio, in_channels // 2),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(in_channels // 2, in_channels)
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction_ratio, in_channels)
         )
-
-        # Initializes weights
-        nn.init.kaiming_normal_(self.mlp[0].weight, mode='fan_out', nonlinearity='leaky_relu')
-        nn.init.kaiming_normal_(self.mlp[2].weight, mode='fan_out', nonlinearity='leaky_relu')
 
         # Pushes output to 0 or 1
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        # Apply GAP and GMP and resize to become 2D
-        gap = self.global_avg_pool(x).view(x.size(0), -1)
-        gmp = self.global_max_pool(x).view(x.size(0), -1)
+        # Apply pooling
+        gap = self.global_avg_pool(x)
+        gmp = self.global_max_pool(x)
+
+        # Flatten pooled outputs to be compatible with MLP
+        gap_flattened = gap.view(x.size(0), -1)
+        gmp_flattened = gmp.view(x.size(0), -1)
 
         # Feed through shared MLP
-        mlp_gap = self.mlp(gap)
-        mlp_gmp = self.mlp(gmp)
+        mlp_gap = self.mlp(gap_flattened)
+        mlp_gmp = self.mlp(gmp_flattened)
 
         # Combine and get attention weights
         combined = mlp_gap + mlp_gmp
@@ -44,13 +42,7 @@ class ChannelAttention(nn.Module):
 class SpatialAttention(nn.Module):
     def __init__(self):
         super().__init__()
-
-        # 7x7 convolution and sigmoid activation
         self.conv = nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False)
-
-        # Initializes weight
-        nn.init.xavier_normal_(self.conv.weight)
-
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
