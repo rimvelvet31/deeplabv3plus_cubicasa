@@ -252,7 +252,7 @@ for epoch in range(start_epoch, EPOCHS):
         f'\nVal Loss:   {val_loss:.4f}'
         f'\nRooms - mPA: {room_mpa:.4f}, mIoU: {room_miou:.4f}, fwIoU: {room_fwiou:.4f}'
         f'\nIcons - mPA: {icon_mpa:.4f}, mIoU: {icon_miou:.4f}, fwIoU: {icon_fwiou:.4f}'
-        f'\nLearning Rate: {scheduler.get_last_lr()[0]:.4f}\n'
+        f'\nLearning Rate: {scheduler.get_last_lr()[0]}\n'
     )
     logging.info(log_message)
     print(log_message)
