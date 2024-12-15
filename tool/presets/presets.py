@@ -1,6 +1,13 @@
 from pathlib import Path
 
+<<<<<<< HEAD
 BASE_PATH = Path.cwd() / "tool" / "assets"
+=======
+red = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
+me = r"D:\GitHub\deepl_lab\tool\assets"
+
+BASE_PATH = me
+>>>>>>> c5d5ba7 (a)
 
 class COLOR_PRESETS():
     BG_COLOR = "#090d12"
