@@ -20,7 +20,7 @@ class MainInterface():
         self.Vectorizer = RECONSTUCTION.Vectorizer()
         
         self.selected_floorplan = None
-        self.model_to_use = 1
+        self.model_to_use = 0
         # self.run_both_models = False
         self.show_core_elements_only = False
 
@@ -76,6 +76,7 @@ class MainInterface():
                                dropdown_text_color="black", dropdown_font=CTkFont("Arial", 12, weight="bold"),
                                dropdown_fg_color="#1f6aa5", dropdown_hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
                                command=lambda selected_model: [self._setParameter("model", models_available.index(selected_model)), self._reRender(main_frame)])
+        select_model.set(models_available[self.model_to_use])
         select_model.place(relx=0.73, rely=0.8, relwidth=0.4, anchor="center")
 
         see_details_btn = CTkButton(main_frame, 
@@ -177,13 +178,13 @@ class MainInterface():
         model_outputs = self.output
         # print(model_outputs.shape)
         # ic(torch.load(model_output_path))
-        self.root.seeSegMaps(model_outputs)
+        self.root.seeSegMaps(model_outputs, self.model_to_use)
         # self.root.seeDetails(self.output, self.labels)
         
     def _seeDetails(self):
         metric_outputs = self.labels
         print(metric_outputs)
-        self.root.seeDetails(metric_outputs)
+        self.root.seeDetails(metric_outputs, self.model_to_use)
 
     def _generateModel(self):
         device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -6,12 +6,14 @@ from PIL import Image
 from icecream import ic
 
 class MetricsUI(ctk.CTkFrame):
-    def __init__(self, root, metrics, COLOR_PRESETS):
+    def __init__(self, root, metrics, model_to_use, COLOR_PRESETS):
         super().__init__(root)
         self.winfo_toplevel().title("Metrics")
         self.configure(bg_color=COLOR_PRESETS.BG_COLOR, fg_color=COLOR_PRESETS.BG_COLOR)
+
         self.metrics = metrics
-        
+        self.model_to_use = model_to_use
+
         self._createWidgets()
         self.pack(expand=True, fill="both")
     
@@ -36,18 +38,22 @@ class MetricsUI(ctk.CTkFrame):
             metrics_frame.configure(fg_color="transparent", bg_color="transparent")
             metrics_frame.pack(padx=10, pady=10, anchor="center", side="left", expand=True)
 
-            ctk.CTkLabel(metrics_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            if self.model_to_use < 2:
+                ctk.CTkLabel(metrics_frame, text="DeepLabV3+" if self.model_to_use == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            else:
+                ctk.CTkLabel(metrics_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
             ctk.CTkLabel(metrics_frame, text="Class Pixel Accuracy", font=("Arial", 14, "bold")).grid(row=1, column=0, sticky="w")
             _list_metrics(metric_list)
 
 class SegmentationUI(ctk.CTkFrame):
-    def __init__(self, root, model_output_path, COLOR_PRESETS):
+    def __init__(self, root, model_output_path, model_to_use, COLOR_PRESETS):
         super().__init__(root)
         self.winfo_toplevel().title("Segmentation Maps")
         self.configure(bg_color=COLOR_PRESETS.BG_COLOR, fg_color=COLOR_PRESETS.BG_COLOR)
         
         self.size = (250, 250)
         self.output = model_output_path
+        self.model_to_use = model_to_use
 
         self._create_widgets()
                 
@@ -78,7 +84,10 @@ class SegmentationUI(ctk.CTkFrame):
             print(output.shape)
             _save_maps(output)
             
-            ctk.CTkLabel(images_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            if self.model_to_use < 2:
+                ctk.CTkLabel(images_frame, text="DeepLabV3+" if self.model_to_use == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            else:
+                ctk.CTkLabel(images_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
 
             self.seg_map_image = ctk.CTkImage(Image.open("maps/segmentation_map.png"), size=self.size)
             self.icon_map_image = ctk.CTkImage(Image.open("maps/icon_map.png"), size=self.size)

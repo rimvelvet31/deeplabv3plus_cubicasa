@@ -22,8 +22,8 @@ class RootUI(CTk):
     def loadMainInterface(self):
         self.main_interface = MainInterface(self, self.PATHS, self.RECONSTRUCTION)
 
-    def seeSegMaps(self, output):
-        SegmentationUI(CTkToplevel(self), output, self.PATHS.COLOR_PRESETS)
+    def seeSegMaps(self, output, model):
+        SegmentationUI(CTkToplevel(self), output, model, self.PATHS.COLOR_PRESETS)
 
-    def seeDetails(self, tensor):
-        MetricsUI(CTkToplevel(self), tensor, self.PATHS.COLOR_PRESETS)
+    def seeDetails(self, tensor, model):
+        MetricsUI(CTkToplevel(self), tensor, model, self.PATHS.COLOR_PRESETS)
