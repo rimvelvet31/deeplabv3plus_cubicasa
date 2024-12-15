@@ -3,7 +3,7 @@ import os
 red = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
 me = r"D:\GitHub\deepl_lab\tool\assets"
 
-BASE_PATH = me
+BASE_PATH = red
 
 class COLOR_PRESETS():
     BG_COLOR = "#090d12"

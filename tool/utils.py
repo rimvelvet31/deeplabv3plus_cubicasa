@@ -2,18 +2,17 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
-from torchmetrics import Accuracy, JaccardIndex
+from torchmetrics import Accuracy, JaccardIndex, MetricCollection
+from icecream import ic
 
 from floortrans.loaders.augmentations import Compose, ResizePaddedTorch, DictToTensor
 from floortrans.loaders.svg_loader import FloorplanSVG
 
 from model.deeplabv3plus import DeepLabV3Plus
 
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
-def load_model(model_path, use_attention=False, device="cuda"):
-    model = DeepLabV3Plus(backbone='mobilenetv2', attention=use_attention)
+def load_model(model_path, backbone='efficientnet_b2', use_attention=False, device="cuda"):
+    model = DeepLabV3Plus(backbone=backbone, attention=use_attention)
 
     model.load_state_dict(torch.load(model_path)['model_state_dict'])
     model.eval()
@@ -60,47 +59,91 @@ def load_img_and_labels(dataset, folder_path):
     return img, labels
 
 
-def evaluate(model, img, labels):
+def compute_combined_metrics(room_class_metrics, icon_class_metrics, combined_class_freq):
+    combined_acc = torch.cat([room_class_metrics['acc'].compute(), icon_class_metrics['acc'].compute()])
+    combined_iou = torch.cat([room_class_metrics['iou'].compute(), icon_class_metrics['iou'].compute()])
+
+    combined_mpa = combined_acc.mean()
+    combined_miou = combined_iou.mean()
+
+    # fwiou
+    total_pixels = combined_class_freq.sum()
+    combined_fwiou = (combined_class_freq / total_pixels * combined_iou).sum()
+
+    return {
+        'mpa': combined_mpa.item(),
+        'cpa': combined_acc.tolist(),
+        'miou': combined_miou.item(),
+        'fwiou': combined_fwiou.item()
+    }
+
+
+def evaluate(model, img, labels, device='cuda'):
     model.eval()
+
+    # Classes
+    class_labels = ["Background", "Outdoor", "Wall", "Kitchen", "Living Room", "Bedroom", "Bath", "Hallway", 
+                    "Railing", "Storage", "Garage", "Other rooms", "Empty", "Window", "Door", "Closet", 
+                    "Electr. Appl.", "Toilet", "Sink", "Sauna bench", "Fire Place", "Bathtub", "Chimney"]
+
+    # For computing combined metrics
+    room_class_metrics = MetricCollection({
+        'acc': Accuracy(task='multiclass', num_classes=12, average=None),
+        'iou': JaccardIndex(task='multiclass', num_classes=12, average=None)     
+    }).to(device)
+
+    icon_class_metrics = MetricCollection({
+        'acc': Accuracy(task='multiclass', num_classes=11, average=None),
+        'iou': JaccardIndex(task='multiclass', num_classes=11, average=None)     
+    }).to(device)
+
+    # To compute combined fwiou
+    combined_class_freq = torch.zeros(23).to(device)
 
     with torch.no_grad():
         # Add batch dimension
         img = img.unsqueeze(0)
         labels = labels.unsqueeze(0)
 
-        img = img.float().to(DEVICE)
-        room_labels = labels[0, 21].long().to(DEVICE)
-        icon_labels = labels[0, 22].long().to(DEVICE)
+        # Convert to appropriate dtype and move to device
+        img = img.float().to(device)
+        room_labels = labels[0, 21].long().to(device)
+        icon_labels = labels[0, 22].long().to(device)
 
-        room_mpa = Accuracy(task='multiclass', num_classes=12, average='macro').to(DEVICE)
-        room_miou = JaccardIndex(task='multiclass', num_classes=12, average='macro').to(DEVICE)
-        room_fwiou = JaccardIndex(task='multiclass', num_classes=12, average='weighted').to(DEVICE)
+        # Get raw outputs
+        room_logits, icon_logits, heatmap_logits = model(img)
 
-        icon_mpa = Accuracy(task='multiclass', num_classes=11, average='macro').to(DEVICE)
-        icon_miou = JaccardIndex(task='multiclass', num_classes=11, average='macro').to(DEVICE)
-        icon_fwiou = JaccardIndex(task='multiclass', num_classes=11, average='weighted').to(DEVICE)
-        
-        room_output, icon_output, heatmap_output = model(img)
+        # Get predictions
+        room_preds = room_logits.argmax(dim=1).squeeze(0)
+        icon_preds = icon_logits.argmax(dim=1).squeeze(0)
 
-        room_preds = room_output.argmax(dim=1).squeeze(0)
-        icon_preds = icon_output.argmax(dim=1).squeeze(0)
+        # Update metrics
+        room_class_metrics(room_preds, room_labels)
+        icon_class_metrics(icon_preds, icon_labels)
 
-        room_mpa_val = room_mpa(room_preds, room_labels)
-        room_miou_val = room_miou(room_preds, room_labels)
-        room_fwiou_val = room_fwiou(room_preds, room_labels)
+        # Update combined class frequency
+        combined_class_freq[:12] += torch.bincount(room_labels.flatten(), minlength=12)
+        combined_class_freq[12:] += torch.bincount(icon_labels.flatten(), minlength=11)
+    
+    # Compute combined metrics
+    metric_scores = compute_combined_metrics(room_class_metrics, icon_class_metrics, combined_class_freq)
+    mpa = metric_scores['mpa']
+    miou = metric_scores['miou']
+    fwiou = metric_scores['fwiou']
+    cpa = [val for val in metric_scores['cpa']]
 
-        icon_mpa_val = icon_mpa(icon_preds, icon_labels)
-        icon_miou_val = icon_miou(icon_preds, icon_labels)
-        icon_fwiou_val = icon_fwiou(icon_preds, icon_labels)
+    combined_tensor = torch.cat([room_preds.unsqueeze(0), icon_preds.unsqueeze(0)], dim=0)
 
-        # print(room_preds.unsqueeze(0).shape)
-        # print(icon_preds.unsqueeze(0).shape)
-        # print(heatmap_output.squeeze(0).shape)
+    # Map class labels to class pixel accuracy
+    metrics_list = [[class_labels[i], round(cpa[i], 4)] for i in range(len(class_labels))]
+    metrics_list.extend([
+        ['Mean Pixel Accuracy', round(mpa, 4)],
+        ['Mean Intersection over Union', round(miou, 4)],
+        ['Frequency-Weighted Intersection over Union', round(fwiou, 4)]
+    ])
+    # ic(metrics_list)
 
-        combined_tensor = torch.cat([heatmap_output.squeeze(0), room_preds.unsqueeze(0), icon_preds.unsqueeze(0)], dim=0)
-        
-        return (combined_tensor, [['room_mpa', room_mpa_val], ['room_miou', room_miou_val], ['room_fwiou', room_fwiou_val],
-                          ['icon_mpa', icon_mpa_val], ['icon_miou', icon_miou_val], ['icon_fwiou', icon_fwiou_val]])
+    return (combined_tensor, metrics_list)
 
 
 # if __name__ == '__main__':

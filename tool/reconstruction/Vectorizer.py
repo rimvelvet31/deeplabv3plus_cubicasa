@@ -229,21 +229,21 @@ class Vectorizer():
         """
         torch_file: Loaded PyTorch tensor with 23 channels [23, 256, 256]
         """
-        scale_factor = 1
+        scale_factor = 3
         
         # Load the PyTorch tensor file
         segmentation_maps = torch_file
-        print(segmentation_maps.shape)
+        # print(segmentation_maps.shape)
 
         # Extract room segmentation from Channel 21 (index 20)
-        room_segmentation = segmentation_maps[21].cpu().numpy()
+        room_segmentation = segmentation_maps[0].cpu().numpy()
         outer_contour, outer_contour_class, room_polygons, room_classes = self._extract_labeled_room_contours(room_segmentation)
         outer_contour = [outer_contour] if outer_contour is not None else []
         # room_polygons = extract_labeled_room_contours(room_segmentation)
         # all_contours = [outer_contour] + room_contours if outer_contour is not None else room_contours
         
         # Extract door, window, and furniture quadrilaterals from Channel 22 (index 21)
-        icon_map = segmentation_maps[22].cpu().numpy()
+        icon_map = segmentation_maps[1].cpu().numpy()
         icon_quadrilaterals = self._extract_icon_quadrilaterals(icon_map)
 
         # vectorized_rooms = [poly for poly in room_polygons]

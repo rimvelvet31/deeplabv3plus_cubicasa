@@ -55,19 +55,18 @@ class SegmentationUI(ctk.CTkFrame):
 
     def _create_widgets(self):
         def _save_maps(output):
-            output = torch.load(output)
             if not os.path.exists("maps"):
                 os.makedirs("maps")
 
             plt.figure()
-            plt.imshow(output[21].cpu().numpy(), cmap='viridis')
+            plt.imshow(output[0].cpu().numpy(), cmap='viridis')
             plt.axis('off')
             plt.savefig("maps/segmentation_map.png", bbox_inches='tight', pad_inches=0)
             plt.close()
 
             # Save icon map from model output
             plt.figure()
-            plt.imshow(output[22].cpu().numpy(), cmap='viridis')
+            plt.imshow(output[1].cpu().numpy(), cmap='viridis')
             plt.axis('off')
             plt.savefig("maps/icon_map.png", bbox_inches='tight', pad_inches=0)
             plt.close()
@@ -76,6 +75,7 @@ class SegmentationUI(ctk.CTkFrame):
             images_frame = ctk.CTkFrame(self)
             images_frame.configure(fg_color="transparent", bg_color="transparent")
             images_frame.pack(padx=10, pady=10, anchor="center")
+            print(output.shape)
             _save_maps(output)
             
             ctk.CTkLabel(images_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
