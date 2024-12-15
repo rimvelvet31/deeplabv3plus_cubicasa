@@ -18,7 +18,12 @@ class MainInterface():
         self.RECONSTRUCTION = RECONSTRUCTION
         
         self.selected_floorplan = None
+<<<<<<< HEAD
         self.model_to_use = 0
+=======
+        self.model_to_use = None
+        # self.run_both_models = False
+>>>>>>> c5d5ba7 (a)
         self.show_core_elements_only = False
 
         self.output = []
