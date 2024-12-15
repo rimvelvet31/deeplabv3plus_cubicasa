@@ -52,7 +52,6 @@ class SegmentationUI(ctk.CTkFrame):
         self._create_widgets()
                 
         self.pack(expand=True, fill="both", anchor="center")
-        
 
     def _create_widgets(self):
         def _save_maps(output):

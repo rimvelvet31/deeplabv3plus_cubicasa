@@ -1,4 +1,5 @@
 import os
+import threading
 import torch
 
 from customtkinter import *
@@ -66,14 +67,7 @@ class MainInterface():
                                             command=self._seeSegMaps)
         show_segmentation_maps_btn.place(relx=0.28, rely=0.865, relwidth=0.4, anchor="center")
         
-        model_renderer_frame = CTkButton(main_frame)
-        model_renderer_frame.configure(corner_radius=32,
-                                       hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
-                                       fg_color="transparent", bg_color="transparent",
-                                       border_color="white", border_width=1,
-                                       text="Show 3D Model", text_color="white",
-                                       command=self._openRenderer)
-        model_renderer_frame.place(relx=0.73, rely=0.4, relwidth=0.4, relheight=0.7, anchor="center")
+        self._splitRenderer(main_frame)
         
         models_available = ["DeepLabv3+", "DeepLabv3+ (w/ CA & SA)", "Run Both Models"]
         select_model = CTkOptionMenu(main_frame, values=models_available)
@@ -81,7 +75,7 @@ class MainInterface():
                                text_color="black", font=CTkFont("Arial", 12, weight="bold"), anchor="center",
                                dropdown_text_color="black", dropdown_font=CTkFont("Arial", 12, weight="bold"),
                                dropdown_fg_color="#1f6aa5", dropdown_hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
-                               command=lambda selected_model: self._setParameter("model", models_available.index(selected_model)))
+                               command=lambda selected_model: [self._setParameter("model", models_available.index(selected_model)), self._reRender(main_frame)])
         select_model.place(relx=0.73, rely=0.8, relwidth=0.4, anchor="center")
 
         see_details_btn = CTkButton(main_frame, 
@@ -97,6 +91,42 @@ class MainInterface():
                                               text="Show only core floor plan elements")
         show_core_elements_only.configure(command=lambda: [self._setParameter("showCoreElementsOnly", show_core_elements_only.get())])
         show_core_elements_only.place(relx=0.5, rely=0.95, anchor="center")
+    
+    def _reRender(self, main_frame):
+        for widget in main_frame.winfo_children():
+            widget.destroy()
+        
+        self._loadContents(main_frame)
+    
+    def _splitRenderer(self, main_frame):
+        if self.model_to_use == 2:
+            base_model_renderer = CTkButton(main_frame)
+            base_model_renderer.configure(corner_radius=32,
+                                            hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
+                                            fg_color="transparent", bg_color="transparent",
+                                            border_color="white", border_width=1,
+                                            text="Show 3D Model DeepLabV3+", text_color="white",
+                                            command=self._openRenderer)
+            base_model_renderer.place(relx=0.73, rely=0.22, relwidth=0.4, relheight=0.34, anchor="center")
+            
+            modified_model_renderer = CTkButton(main_frame)
+            modified_model_renderer.configure(corner_radius=32,
+                                            hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
+                                            fg_color="transparent", bg_color="transparent",
+                                            border_color="white", border_width=1,
+                                            text="Show 3D Model DeepLabV3+ w/ CA & SA", text_color="white",
+                                            command=self._openRenderer)
+            modified_model_renderer._text_label.configure(wraplength=150)
+            modified_model_renderer.place(relx=0.73, rely=0.58, relwidth=0.4, relheight=0.34, anchor="center")
+        else:
+            model_renderer_frame = CTkButton(main_frame)
+            model_renderer_frame.configure(corner_radius=32,
+                                        hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
+                                        fg_color="transparent", bg_color="transparent",
+                                        border_color="white", border_width=1,
+                                        text="Show 3D Model", text_color="white",
+                                        command=self._openRenderer)
+            model_renderer_frame.place(relx=0.73, rely=0.4, relwidth=0.4, relheight=0.7, anchor="center")
     
     def _createCtkImage(self, image_path, size):
         return CTkImage(Image.open(image_path), size=size)
@@ -212,41 +242,46 @@ class MainInterface():
         self.root.seeDetails(metric_outputs)
 
     def _generateModel(self):
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        img, labels = load_img_and_labels(self.dataset, self.selected_floorplan)
+        # device = "cuda" if torch.cuda.is_available() else "cpu"
+        # img, labels = load_img_and_labels(self.dataset, self.selected_floorplan)
         
-        models = []
+        # models = []
         
-        metrics = []
-        outputs = []
+        # metrics = []
+        # outputs = []
 
-        if self.model_to_use < 2:
-            model = load_model(
-                f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
-                use_attention=False if self.model_to_use == 0 else True, device=device)
-            combined_tensor, metrics_output = evaluate(model, img, labels)
-            metrics.append(combined_tensor)
-            outputs.append(metrics_output)
-        else:
-            for i in range(2):
-                model = load_model(
-                    f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if i == 0 else 'ca_sa'}.pt", 
-                    use_attention=False if i == 0 else True, device=device)
-                models.append(model)
-                combined_tensor, metrics_output = evaluate(model, img, labels)
-                metrics.append(combined_tensor)
-                outputs.append(metrics_output)
-                print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
+        # if self.model_to_use < 2:
+        #     model = load_model(
+        #         f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
+        #         use_attention=False if self.model_to_use == 0 else True, device=device)
+        #     combined_tensor, metrics_output = evaluate(model, img, labels)
+        #     metrics.append(combined_tensor)
+        #     outputs.append(metrics_output)
+        # else:
+        #     for i in range(2):
+        #         model = load_model(
+        #             f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if i == 0 else 'ca_sa'}.pt", 
+        #             use_attention=False if i == 0 else True, device=device)
+        #         models.append(model)
+        #         combined_tensor, metrics_output = evaluate(model, img, labels)
+        #         metrics.append(combined_tensor)
+        #         outputs.append(metrics_output)
+        #         print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
 
         
-        self.labels = metrics
-        self.output = outputs
+        # self.labels = metrics
+        # self.output = outputs
 
         # self.Vectorizer(combined_tensor)
-        # sample = torch.load(r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\deeplab\floorplan_pred256.pt")
-        scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = self.Vectorizer.process_data(combined_tensor)
+        sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
+        scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = self.Vectorizer.process_data(sample)
         self.Renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
         print("Model generated")
 
     def _openRenderer(self):
-        self.Renderer.show_model()
+        # threading.Thread(target=self.Renderer.show_model).start()
+        try:
+            self.Renderer.show_model()
+        except Exception as e:
+            if str(e) == "'Renderer' object has no attribute 'window'":
+                print("Model not generated yet")
