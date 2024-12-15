@@ -1,8 +1,8 @@
 import sys
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QVBoxLayout, QPushButton, QWidget
-from PyQt5.QtGui import QFont, QPainter, QColor  # Import QFont and QPainter
-from PyQt5.QtCore import Qt  # Import Qt constants
+from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtCore import Qt
 from OpenGL.GL import *
 from OpenGL.GLU import *
 
