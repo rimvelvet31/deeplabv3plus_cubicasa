@@ -225,16 +225,11 @@ class Vectorizer():
         """
         return [[coord[0] * scale_factor, coord[1] * scale_factor, coord[2] * scale_factor] for coord in wall]
 
-    def process_data(self, data):
-        # Your data processing logic
-        result = self._floorplan_to_vectorized_output(data)
-        return result
-
     def _floorplan_to_vectorized_output(self, torch_file):
         """
         torch_file: Loaded PyTorch tensor with 23 channels [23, 256, 256]
         """
-        scale_factor = 3
+        scale_factor = 1
         
         # Load the PyTorch tensor file
         segmentation_maps = torch_file
@@ -264,3 +259,8 @@ class Vectorizer():
         scaled_icons = [self._scale_coordinates(quad[0], scale_factor) for quad in icon_quadrilaterals]
 
         return scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes
+
+    def process_data(self, data):
+        # Your data processing logic
+        result = self._floorplan_to_vectorized_output(data)
+        return result

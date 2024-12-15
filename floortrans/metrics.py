@@ -8,6 +8,7 @@ import math
 import torch
 from torch.nn.functional import sigmoid, softmax, interpolate
 from skimage import draw
+from skimage import transform
 from floortrans import post_prosessing
 from floortrans.loaders.augmentations import RotateNTurns
 from floortrans.plotting import shp_mask
@@ -86,7 +87,7 @@ def up_sample_predictions(pred, size):
     # Don't understand why
     pred = transform.resize(pred, (pred_count, channels, height, width),
                             order=3, mode='constant', anti_aliasing=False)
-
+    
     return pred
 
 
@@ -181,3 +182,12 @@ def get_evaluation_tensors(val, model, split, logger, rotate=True, n_classes=44)
     
     
     return labels_val[0, 21:].data.numpy(), np.concatenate(([rooms_seg], [icons_seg]), axis=0), np.concatenate(([pol_rooms], [pol_icons]), axis=0)
+
+
+if __name__ == "__main__":
+    data = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
+    data = data[21:, :, :]
+    get_evaluation_tensors(data, None, [1, 1], None, rotate=False)
+    
+    
+    

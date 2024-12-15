@@ -1,6 +1,6 @@
 from customtkinter import *
 from ui.MainInterface import MainInterface
-from ui.MetricsUI import MetricsUI
+from ui.MetricsUI import SegmentationUI, MetricsUI
 
 class RootUI(CTk):
     def __init__(self):
@@ -22,6 +22,8 @@ class RootUI(CTk):
     def loadMainInterface(self):
         self.main_interface = MainInterface(self, self.PATHS, self.RECONSTRUCTION)
 
-    def seeDetails(self, tensor, output):
-        MetricsUI(CTkToplevel(self), tensor, output)
-        
+    def seeSegMaps(self, output):
+        SegmentationUI(CTkToplevel(self), output, self.PATHS.COLOR_PRESETS)
+
+    def seeDetails(self, tensor):
+        MetricsUI(CTkToplevel(self), tensor, self.PATHS.COLOR_PRESETS)
