@@ -20,7 +20,7 @@ class MainInterface():
         self.Vectorizer = RECONSTUCTION.Vectorizer()
         
         self.selected_floorplan = None
-        self.model_to_use = None
+        self.model_to_use = 1
         # self.run_both_models = False
         self.show_core_elements_only = False
 
@@ -29,10 +29,10 @@ class MainInterface():
 
         self.root = root
 
-        red = 'C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/data/cubicasa5k/'
+        red = r'C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\data\cubicasa5k\\'
         me = 'D:\GitHub\deepl_lab\data\cubicasa5k\\'
 
-        self.dataset = load_dataset(me)
+        self.dataset = load_dataset(red)
         
         main_frame = self._initializeMainFrame(root)
         self._loadContents(main_frame);
@@ -171,110 +171,54 @@ class MainInterface():
         print(f"Selected {parameter}: {value}")
     
     def _seeSegMaps(self):
-        model_output_path = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
-        model_output_path1 = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
+        # model_output_path = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
+        # model_output_path1 = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
         
-        model_outputs = [model_output_path, model_output_path1]
+        model_outputs = self.output
+        # print(model_outputs.shape)
         # ic(torch.load(model_output_path))
         self.root.seeSegMaps(model_outputs)
         # self.root.seeDetails(self.output, self.labels)
         
     def _seeDetails(self):
-        metrics =[
-                    ["Background", "0.98"],
-                    ["Outdoor", "0.96"],
-                    ["Wall", "0.94"],
-                    ["Kitchen", "0.97"],
-                    ["Living room", "0.92"],
-                    ["Bedroom", "0.94"],
-                    ["Bath", "0.95"],
-                    ["Hallway", "0.99"],
-                    ["Railing", "0.92"],
-                    ["Storage", "0.90"],
-                    ["Garage", "0.97"],
-                    ["Other rooms", "0.92"],
-                    ["Empty", "0.99"],
-                    ["Window", "0.98"],
-                    ["Door", "0.95"],
-                    ["Closet", "0.99"],
-                    ["Electr. Appl.", "0.97"],
-                    ["Toilet", "0.90"],
-                    ["Sink", "0.96"],
-                    ["Sauna bench", "0.90"],
-                    ["Fire Place", "0.93"],
-                    ["Bathtub", "0.94"],
-                    ["Chimney", "0.94"],
-                    ["Other", "0.90"],
-                    ["Mean Pixel Accuracy", "0.97"],
-                    ["Mean IoU", "0.99"],
-                    ["Frequency-Weighted IoU", "0.98"]
-                ]
-        metrics1 =[
-                    ["Background", "0.98"],
-                    ["Outdoor", "0.96"],
-                    ["Wall", "0.94"],
-                    ["Kitchen", "0.97"],
-                    ["Living room", "0.92"],
-                    ["Bedroom", "0.94"],
-                    ["Bath", "0.95"],
-                    ["Hallway", "0.99"],
-                    ["Railing", "0.92"],
-                    ["Storage", "0.90"],
-                    ["Garage", "0.97"],
-                    ["Other rooms", "0.92"],
-                    ["Empty", "0.99"],
-                    ["Window", "0.98"],
-                    ["Door", "0.95"],
-                    ["Closet", "0.99"],
-                    ["Electr. Appl.", "0.97"],
-                    ["Toilet", "0.90"],
-                    ["Sink", "0.96"],
-                    ["Sauna bench", "0.90"],
-                    ["Fire Place", "0.93"],
-                    ["Bathtub", "0.94"],
-                    ["Chimney", "0.94"],
-                    ["Other", "0.90"],
-                    ["Mean Pixel Accuracy", "0.97"],
-                    ["Mean IoU", "0.99"],
-                    ["Frequency-Weighted IoU", "0.98"]
-                ]
-        metric_outputs = [metrics, metrics1]
+        metric_outputs = self.labels
+        print(metric_outputs)
         self.root.seeDetails(metric_outputs)
 
     def _generateModel(self):
-        # device = "cuda" if torch.cuda.is_available() else "cpu"
-        # img, labels = load_img_and_labels(self.dataset, self.selected_floorplan)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        img, labels = load_img_and_labels(self.dataset, self.selected_floorplan)
         
-        # models = []
+        models = []
         
-        # metrics = []
-        # outputs = []
+        metrics = []
+        outputs = []
 
-        # if self.model_to_use < 2:
-        #     model = load_model(
-        #         f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
-        #         use_attention=False if self.model_to_use == 0 else True, device=device)
-        #     combined_tensor, metrics_output = evaluate(model, img, labels)
-        #     metrics.append(combined_tensor)
-        #     outputs.append(metrics_output)
-        # else:
-        #     for i in range(2):
-        #         model = load_model(
-        #             f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/best_checkpoint_mobilenetv2_{'base' if i == 0 else 'ca_sa'}.pt", 
-        #             use_attention=False if i == 0 else True, device=device)
-        #         models.append(model)
-        #         combined_tensor, metrics_output = evaluate(model, img, labels)
-        #         metrics.append(combined_tensor)
-        #         outputs.append(metrics_output)
-        #         print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
+        if self.model_to_use < 2:
+            model = load_model(
+                f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/deeplab_efficientnet_b2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
+                use_attention=False if self.model_to_use == 0 else True, device=device)
+            combined_tensor, metrics_output = evaluate(model, img, labels)
+            metrics.append(metrics_output)
+            outputs.append(combined_tensor)
+        else:
+            for i in range(2):
+                model = load_model(
+                    f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/deeplab_efficientnet_b2_{'base' if i == 0 else 'ca_sa'}.pt", 
+                    use_attention=False if i == 0 else True, device=device)
+                models.append(model)
+                combined_tensor, metrics_output = evaluate(model, img, labels)
+                metrics.append(metrics_output)
+                outputs.append(combined_tensor)
+                print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
 
         
-        # self.labels = metrics
-        # self.output = outputs
+        self.labels = metrics
+        self.output = outputs
 
         # self.Vectorizer(combined_tensor)
-        sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
-        scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = self.Vectorizer.process_data(sample)
+        # sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
+        scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = self.Vectorizer.process_data(self.output[0])
         self.Renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
         print("Model generated")
 
