@@ -229,7 +229,7 @@ class Vectorizer():
         """
         torch_file: Loaded PyTorch tensor with 23 channels [23, 256, 256]
         """
-        scale_factor = 3
+        scale_factor = 2
         
         # Load the PyTorch tensor file
         segmentation_maps = torch_file
