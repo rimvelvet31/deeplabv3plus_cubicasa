@@ -12,20 +12,19 @@ from utils import load_model, load_dataset, load_img_and_labels, evaluate
 
 
 class MainInterface():
-    def __init__(self, root, PATHS, RECONSTUCTION):
+    def __init__(self, root, PATHS, RECONSTRUCTION):
         self.COLOR_PRESETS = PATHS.COLOR_PRESETS
         self.IMAGE_PATHS = PATHS.IMAGE_PATHS
-        
-        self.Renderer = RECONSTUCTION.Renderer()
-        self.Vectorizer = RECONSTUCTION.Vectorizer()
+        self.RECONSTRUCTION = RECONSTRUCTION
         
         self.selected_floorplan = None
-        self.model_to_use = 1
-        # self.run_both_models = False
+        self.model_to_use = 0
         self.show_core_elements_only = False
 
         self.output = []
         self.labels = []
+
+        self.processed_data = []
 
         self.root = root
 
@@ -76,6 +75,7 @@ class MainInterface():
                                dropdown_text_color="black", dropdown_font=CTkFont("Arial", 12, weight="bold"),
                                dropdown_fg_color="#1f6aa5", dropdown_hover_color=self.COLOR_PRESETS.BTN_HOVER_COLOR,
                                command=lambda selected_model: [self._setParameter("model", models_available.index(selected_model)), self._reRender(main_frame)])
+        select_model.set(models_available[self.model_to_use])
         select_model.place(relx=0.73, rely=0.8, relwidth=0.4, anchor="center")
 
         see_details_btn = CTkButton(main_frame, 
@@ -106,7 +106,7 @@ class MainInterface():
                                             fg_color="transparent", bg_color="transparent",
                                             border_color="white", border_width=1,
                                             text="Show 3D Model DeepLabV3+", text_color="white",
-                                            command=self._openRenderer)
+                                            command=lambda: self._openRenderer(0))
             base_model_renderer.place(relx=0.73, rely=0.22, relwidth=0.4, relheight=0.34, anchor="center")
             
             modified_model_renderer = CTkButton(main_frame)
@@ -115,7 +115,7 @@ class MainInterface():
                                             fg_color="transparent", bg_color="transparent",
                                             border_color="white", border_width=1,
                                             text="Show 3D Model DeepLabV3+ w/ CA & SA", text_color="white",
-                                            command=self._openRenderer)
+                                            command=lambda: self._openRenderer(1))
             modified_model_renderer._text_label.configure(wraplength=150)
             modified_model_renderer.place(relx=0.73, rely=0.58, relwidth=0.4, relheight=0.34, anchor="center")
         else:
@@ -163,8 +163,9 @@ class MainInterface():
         
         if parameter == "floorplan" and value != None:
             self.selected_floorplan = value
-        elif parameter == "useBothModels":
-            self.run_both_models = value
+            self.processed_data.clear()
+            self.output.clear()
+            self.labels.clear()
         elif parameter == "model":
             self.model_to_use = value
         
@@ -177,13 +178,13 @@ class MainInterface():
         model_outputs = self.output
         # print(model_outputs.shape)
         # ic(torch.load(model_output_path))
-        self.root.seeSegMaps(model_outputs)
+        self.root.seeSegMaps(model_outputs, self.model_to_use)
         # self.root.seeDetails(self.output, self.labels)
         
     def _seeDetails(self):
         metric_outputs = self.labels
         print(metric_outputs)
-        self.root.seeDetails(metric_outputs)
+        self.root.seeDetails(metric_outputs, self.model_to_use)
 
     def _generateModel(self):
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -201,6 +202,7 @@ class MainInterface():
             combined_tensor, metrics_output = evaluate(model, img, labels)
             metrics.append(metrics_output)
             outputs.append(combined_tensor)
+            print("Model generated")
         else:
             for i in range(2):
                 model = load_model(
@@ -211,6 +213,7 @@ class MainInterface():
                 metrics.append(metrics_output)
                 outputs.append(combined_tensor)
                 print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
+                print("Model generated")
 
         
         self.labels = metrics
@@ -218,14 +221,29 @@ class MainInterface():
 
         # self.Vectorizer(combined_tensor)
         # sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
-        scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = self.Vectorizer.process_data(self.output[0])
-        self.Renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
-        print("Model generated")
+        if self.model_to_use < 2:
+            renderer = self.RECONSTRUCTION.Renderer()
+            vectorizer = self.RECONSTRUCTION.Vectorizer()
+            scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = vectorizer.process_data(self.output[0])
+            renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
+            self.processed_data.append(renderer)
+        else:
+            for i in range(2):
+                renderer = self.RECONSTRUCTION.Renderer()
+                vectorizer = self.RECONSTRUCTION.Vectorizer()
+                scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = vectorizer.process_data(self.output[i])
+                renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
+                self.processed_data.append(renderer)
+        ic(self.processed_data)
 
-    def _openRenderer(self):
+
+    def _openRenderer(self, model_to_use=None):
         # threading.Thread(target=self.Renderer.show_model).start()
         try:
-            self.Renderer.show_model()
+            if self.model_to_use == 2:
+                self.processed_data[model_to_use].show_model()
+            else:
+                self.processed_data[0].show_model()
         except Exception as e:
             if str(e) == "'Renderer' object has no attribute 'window'":
                 print("Model not generated yet")

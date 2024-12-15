@@ -1,7 +1,8 @@
 import sys
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QVBoxLayout, QPushButton, QWidget
-from PyQt5.QtGui import QFont, QPainter  # Import QFont and QPainter
+from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtCore import Qt
 from OpenGL.GL import *
 from OpenGL.GLU import *
 
@@ -25,10 +26,73 @@ class FloorPlanViewer(QOpenGLWidget):
         self.last_y = 0
         self.display_list = None
         self.offset_factor = 1.0
-    
+        self.zoom_factor = 1.0
+        self.pos_x = 0.0
+        self.pos_y = -25.0
+        self.pos_z = -1000.0
+        self.move_speed = 10.0
+
+        self.room_legend = [
+            ("Background", (0, 0, 0)),
+            ("Outdoor", (0.5, 0.5, 0.5)),
+            ("Wall", (0.8, 0.8, 0.8)),
+            ("Kitchen", (1, 1, 0)),
+            ("Living Room", (0, 1, 0)),
+            ("Bed Room", (1, 0, 0)),
+            ("Bath", (0, 0, 1)),
+            ("Entry", (1, 0, 1)),
+            ("Railing", (0.5, 0, 0.5)),
+            ("Storage", (0.7, 0.7, 0)),
+            ("Garage", (0.2, 0.2, 0.2)),
+            ("Undefined", (0, 1, 1)),
+        ]
+
+        self.icon_legend = [
+            ("No Icon", (0, 0, 0)),
+            ("Window", (0, 1, 1)),
+            ("Door", (0, 150/255, 75/255)),
+            ("Closet", (0, 0, 1)),
+            ("Electrical Applience", (1, 1, 0)),
+            ("Toilet", (1, 0, 1)),
+            ("Sink", (1, 1, 1)),
+            ("Sauna Bench", (0.5, 0.5, 0.5)),
+            ("Fire Place", (1, 0.5, 0)),
+            ("Bathtub", (0.9, 0.9, 0.9)),
+            ("Chimney", (0, 0.5, 1)),
+        ]
+
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocus()
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key_W:  # Move forward
+            self.pos_z += self.move_speed
+        elif key == Qt.Key_S:  # Move backward
+            self.pos_z -= self.move_speed
+        elif key == Qt.Key_A:  # Move left
+            self.pos_x += self.move_speed
+        elif key == Qt.Key_D:  # Move right
+            self.pos_x -= self.move_speed
+
+        self.update()
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()  # Get the scroll amount
+        if delta > 0:
+            self.zoom_factor /= 1.1  # Zoom in
+        else:
+            self.zoom_factor *= 1.1  # Zoom out
+
+        self.update()  # Trigger a repaint
+
     def initializeGL(self):
         glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LEQUAL)  # Accept fragment if it is closer to the camera
+        glClearDepth(1.0)       # Set the farthest depth value
+        glEnable(GL_BLEND)      # Enable transparency for QPainter
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.create_display_list()
+
 
     def create_display_list(self):
         self.display_list = glGenLists(1)
@@ -94,11 +158,61 @@ class FloorPlanViewer(QOpenGLWidget):
                 self.draw_wall(wall)
         
         glEndList()
+        
+    def paintEvent(self, event):
+        super().paintEvent(event)  # Render OpenGL content first
+
+        glDisable(GL_DEPTH_TEST)  # Disable depth testing for 2D elements
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Draw the room legend (top-right)
+        margin = 10
+        room_x = self.width() - 200 - margin
+        room_y = margin
+        painter.setBrush(Qt.white)
+        painter.setOpacity(0.8)
+        painter.drawRect(
+            room_x - margin, 
+            room_y - margin, 
+            200 + 2 * margin, 
+            len(self.room_legend) * 25 + 2 * margin
+        )
+        painter.setOpacity(1.0)
+        for i, (name, color) in enumerate(self.room_legend):
+            painter.setBrush(QColor(*(int(c * 255) for c in color)))
+            painter.drawRect(room_x, room_y + i * 25, 20, 20)
+            painter.setPen(Qt.black)
+            painter.drawText(room_x + 30, room_y + i * 25 + 15, name)
+
+        # Draw the icon legend (top-left)
+        icon_x = margin
+        icon_y = margin
+        painter.setBrush(Qt.white)
+        painter.setOpacity(0.8)
+        painter.drawRect(
+            icon_x - margin, 
+            icon_y - margin, 
+            200 + 2 * margin, 
+            len(self.icon_legend) * 25 + 2 * margin
+        )
+        painter.setOpacity(1.0)
+        for i, (name, color) in enumerate(self.icon_legend):
+            painter.setBrush(QColor(*(int(c * 255) for c in color)))
+            painter.drawRect(icon_x, icon_y + i * 25, 20, 20)
+            painter.setPen(Qt.black)
+            painter.drawText(icon_x + 30, icon_y + i * 25 + 15, name)
+
+        painter.end()
+
+        glEnable(GL_DEPTH_TEST)  # Re-enable depth testing
+
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
-        glTranslatef(0, -25, -1000)
+        glTranslatef(self.pos_x, self.pos_y, self.pos_z * self.zoom_factor)  # Use position and zoom factor
         glRotatef(self.rot_x, 1, 0, 0)
         glRotatef(self.rot_y, 0, 1, 0)
 
