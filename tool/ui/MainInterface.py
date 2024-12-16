@@ -10,6 +10,8 @@ from icecream import ic
 
 from utils import load_model, load_dataset, load_img_and_labels, evaluate
 
+from floortrans import post_prosessing
+
 
 class MainInterface():
     def __init__(self, root, PATHS, RECONSTRUCTION):
@@ -28,10 +30,12 @@ class MainInterface():
 
         self.root = root
 
-        red = r'C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\data\cubicasa5k\\'
-        me = 'D:\GitHub\deepl_lab\data\cubicasa5k\\'
+        # red = r'C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\data\cubicasa5k\\'
+        # me = 'D:\GitHub\deepl_lab\data\cubicasa5k\\'
 
-        self.dataset = load_dataset(red)
+        DATASET_PATH = os.path.join(os.getcwd(), "data", "cubicasa5k/")
+        
+        self.dataset = load_dataset(DATASET_PATH)
         
         main_frame = self._initializeMainFrame(root)
         self._loadContents(main_frame);
@@ -91,7 +95,8 @@ class MainInterface():
                                               text="Show only core floor plan elements")
         show_core_elements_only.configure(command=lambda: [self._setParameter("showCoreElementsOnly", show_core_elements_only.get())])
         show_core_elements_only.place(relx=0.5, rely=0.95, anchor="center")
-    
+
+
     def _reRender(self, main_frame):
         for widget in main_frame.winfo_children():
             widget.destroy()
@@ -164,8 +169,6 @@ class MainInterface():
         if parameter == "floorplan" and value != None:
             self.selected_floorplan = value
             self.processed_data.clear()
-            self.output.clear()
-            self.labels.clear()
         elif parameter == "model":
             self.model_to_use = value
         
@@ -175,10 +178,9 @@ class MainInterface():
         # model_output_path = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
         # model_output_path1 = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
         
-        model_outputs = self.output
         # print(model_outputs.shape)
         # ic(torch.load(model_output_path))
-        self.root.seeSegMaps(model_outputs, self.model_to_use)
+        self.root.seeSegMaps(self.output, self.model_to_use)
         # self.root.seeDetails(self.output, self.labels)
         
     def _seeDetails(self):
@@ -194,30 +196,36 @@ class MainInterface():
         
         metrics = []
         outputs = []
+        ground_truths = []
 
         if self.model_to_use < 2:
             model = load_model(
                 f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/deeplab_efficientnet_b2_{'base' if self.model_to_use == 0 else 'ca_sa'}.pt", 
                 use_attention=False if self.model_to_use == 0 else True, device=device)
-            combined_tensor, metrics_output = evaluate(model, img, labels)
+            combined_output, combined_labels, metrics_output = evaluate(model, img, labels)
             metrics.append(metrics_output)
-            outputs.append(combined_tensor)
+            outputs.append(combined_output)
+            ground_truths.append(combined_labels)
             print("Model generated")
+
         else:
             for i in range(2):
                 model = load_model(
                     f"C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/tool/deeplab/deeplab_efficientnet_b2_{'base' if i == 0 else 'ca_sa'}.pt", 
                     use_attention=False if i == 0 else True, device=device)
                 models.append(model)
-                combined_tensor, metrics_output = evaluate(model, img, labels)
+                combined_output, combined_labels, metrics_output = evaluate(model, img, labels)
                 metrics.append(metrics_output)
-                outputs.append(combined_tensor)
+                outputs.append(combined_output)
+                if i == 0:
+                    ground_truths.append(combined_labels)
                 print(f"Model loaded: deeplabv3plus_{model.backbone_name}_{model.attention}")
                 print("Model generated")
 
         
         self.labels = metrics
         self.output = outputs
+        self.output.extend(ground_truths)
 
         # self.Vectorizer(combined_tensor)
         # sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
@@ -234,8 +242,6 @@ class MainInterface():
                 scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes = vectorizer.process_data(self.output[i])
                 renderer.generate_model(scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes)
                 self.processed_data.append(renderer)
-        ic(self.processed_data)
-
 
     def _openRenderer(self, model_to_use=None):
         # threading.Thread(target=self.Renderer.show_model).start()

@@ -53,6 +53,8 @@ class SegmentationUI(ctk.CTkFrame):
         
         self.size = (250, 250)
         self.output = model_output_path
+
+        # self.ground_truth = ground_truth
         self.model_to_use = model_to_use
 
         self._create_widgets()
@@ -76,18 +78,21 @@ class SegmentationUI(ctk.CTkFrame):
             plt.axis('off')
             plt.savefig("maps/icon_map.png", bbox_inches='tight', pad_inches=0)
             plt.close()
-            
+
         for i, output in enumerate(self.output):
             images_frame = ctk.CTkFrame(self)
             images_frame.configure(fg_color="transparent", bg_color="transparent")
-            images_frame.pack(padx=10, pady=10, anchor="center")
-            print(output.shape)
+            images_frame.pack(padx=10, pady=10, anchor="center", side="left", expand=True)
             _save_maps(output)
             
-            if self.model_to_use < 2:
-                ctk.CTkLabel(images_frame, text="DeepLabV3+" if self.model_to_use == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
-            else:
+            if self.model_to_use == 0 and i == 0:
+                ctk.CTkLabel(images_frame, text="DeepLabV3+", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            elif self.model_to_use == 1 and i == 0:
+                ctk.CTkLabel(images_frame, text="DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            elif self.model_to_use == 2 and i < 2:
                 ctk.CTkLabel(images_frame, text="DeepLabV3+" if i == 0 else "DeepLabV3+ w/ CA & SA", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
+            elif (self.model_to_use < 2 and i == 1) or (self.model_to_use == 2 and i == 2):
+                ctk.CTkLabel(images_frame, text="Ground Truth", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
 
             self.seg_map_image = ctk.CTkImage(Image.open("maps/segmentation_map.png"), size=self.size)
             self.icon_map_image = ctk.CTkImage(Image.open("maps/icon_map.png"), size=self.size)
@@ -95,5 +100,5 @@ class SegmentationUI(ctk.CTkFrame):
             ctk.CTkLabel(images_frame, text="Segmentation Map", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=5, pady=5)
             ctk.CTkLabel(images_frame, image=self.seg_map_image, text="").grid(row=2, column=0, padx=5, pady=5)
 
-            ctk.CTkLabel(images_frame, text="Icon Map", font=("Arial", 12, "bold")).grid(row=1, column=1, padx=5, pady=5)
-            ctk.CTkLabel(images_frame, image=self.icon_map_image, text="").grid(row=2, column=1, padx=5, pady=5)
+            ctk.CTkLabel(images_frame, text="Icon Map", font=("Arial", 12, "bold")).grid(row=3, column=0, padx=5, pady=5)
+            ctk.CTkLabel(images_frame, image=self.icon_map_image, text="").grid(row=4, column=0, padx=5, pady=5)
