@@ -10,8 +10,6 @@ from icecream import ic
 
 from utils import load_model, load_dataset, load_img_and_labels, evaluate
 
-from floortrans import post_prosessing
-
 
 class MainInterface():
     def __init__(self, root, PATHS, RECONSTRUCTION):
@@ -29,9 +27,6 @@ class MainInterface():
         self.processed_data = []
 
         self.root = root
-
-        # red = r'C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\data\cubicasa5k\\'
-        # me = 'D:\GitHub\deepl_lab\data\cubicasa5k\\'
 
         DATASET_PATH = os.path.join(os.getcwd(), "data", "cubicasa5k/")
         
@@ -158,7 +153,6 @@ class MainInterface():
         
         button_widget.configure(image=ctk_image, text="")
         
-        # return selected_floorplan
         return path
     
     def _setParameter(self, parameter, value):
@@ -175,13 +169,7 @@ class MainInterface():
         print(f"Selected {parameter}: {value}")
     
     def _seeSegMaps(self):
-        # model_output_path = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
-        # model_output_path1 = r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt"
-        
-        # print(model_outputs.shape)
-        # ic(torch.load(model_output_path))
         self.root.seeSegMaps(self.output, self.model_to_use)
-        # self.root.seeDetails(self.output, self.labels)
         
     def _seeDetails(self):
         metric_outputs = self.labels
@@ -227,8 +215,6 @@ class MainInterface():
         self.output = outputs
         self.output.extend(ground_truths)
 
-        # self.Vectorizer(combined_tensor)
-        # sample = torch.load(r"D:\GitHub\deepl_lab\tool\deeplab\floorplan_pred512.pt")
         if self.model_to_use < 2:
             renderer = self.RECONSTRUCTION.Renderer()
             vectorizer = self.RECONSTRUCTION.Vectorizer()
@@ -244,7 +230,6 @@ class MainInterface():
                 self.processed_data.append(renderer)
 
     def _openRenderer(self, model_to_use=None):
-        # threading.Thread(target=self.Renderer.show_model).start()
         try:
             if self.model_to_use == 2:
                 self.processed_data[model_to_use].show_model()
