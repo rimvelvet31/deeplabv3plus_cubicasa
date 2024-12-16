@@ -45,7 +45,9 @@ def load_dataset(data_folder, image_size=(256, 256)):
 
 
 def load_img_and_labels(dataset, folder_path):
-    relative_folder = os.path.relpath(folder_path, 'C:/Users/Red/Documents/GitHub/deeplabv3plus_cubicasa/data/cubicasa5k/')
+    dataset_path = os.path.join(os.getcwd(), 'data', 'cubicasa5k')
+    
+    relative_folder = os.path.relpath(folder_path, dataset_path)
     relative_folder = relative_folder.replace('\\', '/')
     relative_folder = f'/{relative_folder}/'
 
@@ -100,16 +102,16 @@ def evaluate(model, img, labels, device='cuda'):
     # To compute combined fwiou
     combined_class_freq = torch.zeros(23).to(device)
 
+    # Add batch dimension
+    img = img.unsqueeze(0)
+    labels = labels.unsqueeze(0)
+
+    # Convert to appropriate dtype and move to device
+    img = img.float().to(device)
+    room_labels = labels[0, 21].long().to(device)
+    icon_labels = labels[0, 22].long().to(device)
+
     with torch.no_grad():
-        # Add batch dimension
-        img = img.unsqueeze(0)
-        labels = labels.unsqueeze(0)
-
-        # Convert to appropriate dtype and move to device
-        img = img.float().to(device)
-        room_labels = labels[0, 21].long().to(device)
-        icon_labels = labels[0, 22].long().to(device)
-
         # Get raw outputs
         room_logits, icon_logits, heatmap_logits = model(img)
 
@@ -131,8 +133,12 @@ def evaluate(model, img, labels, device='cuda'):
     miou = metric_scores['miou']
     fwiou = metric_scores['fwiou']
     cpa = [val for val in metric_scores['cpa']]
+    
+    # Combined model predictions
+    combined_preds_tensor = torch.cat([room_preds.unsqueeze(0), icon_preds.unsqueeze(0)], dim=0)
 
-    combined_tensor = torch.cat([room_preds.unsqueeze(0), icon_preds.unsqueeze(0)], dim=0)
+    # Combined labels
+    combined_labels_tensor = torch.cat([room_labels.unsqueeze(0), icon_labels.unsqueeze(0)], dim=0)
 
     # Map class labels to class pixel accuracy
     metrics_list = [[class_labels[i], round(cpa[i], 4)] for i in range(len(class_labels))]
@@ -143,7 +149,7 @@ def evaluate(model, img, labels, device='cuda'):
     ])
     # ic(metrics_list)
 
-    return (combined_tensor, metrics_list)
+    return (combined_preds_tensor, combined_labels_tensor, metrics_list)
 
 
 # if __name__ == '__main__':
