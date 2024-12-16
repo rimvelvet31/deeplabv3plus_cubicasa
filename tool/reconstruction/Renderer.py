@@ -66,30 +66,30 @@ class FloorPlanViewer(QOpenGLWidget):
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key_W:  # Move forward
+        if key == Qt.Key_W:
             self.pos_z += self.move_speed
-        elif key == Qt.Key_S:  # Move backward
+        elif key == Qt.Key_S:
             self.pos_z -= self.move_speed
-        elif key == Qt.Key_A:  # Move left
+        elif key == Qt.Key_A:
             self.pos_x += self.move_speed
-        elif key == Qt.Key_D:  # Move right
+        elif key == Qt.Key_D:
             self.pos_x -= self.move_speed
 
         self.update()
     def wheelEvent(self, event):
-        delta = event.angleDelta().y()  # Get the scroll amount
+        delta = event.angleDelta().y()
         if delta > 0:
-            self.zoom_factor /= 1.1  # Zoom in
+            self.zoom_factor /= 1.1
         else:
-            self.zoom_factor *= 1.1  # Zoom out
+            self.zoom_factor *= 1.1
 
-        self.update()  # Trigger a repaint
+        self.update()
 
     def initializeGL(self):
         glEnable(GL_DEPTH_TEST)
-        glDepthFunc(GL_LEQUAL)  # Accept fragment if it is closer to the camera
-        glClearDepth(1.0)       # Set the farthest depth value
-        glEnable(GL_BLEND)      # Enable transparency for QPainter
+        glDepthFunc(GL_LEQUAL)
+        glClearDepth(1.0)
+        glEnable(GL_BLEND) 
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.create_display_list()
 
@@ -98,7 +98,6 @@ class FloorPlanViewer(QOpenGLWidget):
         self.display_list = glGenLists(1)
         glNewList(self.display_list, GL_COMPILE)
         
-        # Render the floor (this remains unchanged)
         glColor3f(0.8, 0.8, 0.8)
         glBegin(GL_QUADS)
         glVertex3f(-250*self.offset_factor, -3, -250*self.offset_factor)
@@ -123,9 +122,9 @@ class FloorPlanViewer(QOpenGLWidget):
                 (0, 1, 1)   # Undefined - Cyan
             ]
         if self.show_rooms:
-            for i, room in enumerate(self.rooms):  # Use enumerate to get both index and room
-                class_index = self.room_class[i]  # Get class index for the current room
-                glColor3f(*room_colors[int(class_index)])  # Set color based on class
+            for i, room in enumerate(self.rooms):
+                class_index = self.room_class[i]
+                glColor3f(*room_colors[int(class_index)])
                 self.draw_polygon(room, "room")
                 
             for contour in self.contours:
@@ -148,8 +147,8 @@ class FloorPlanViewer(QOpenGLWidget):
                 (0, 0.5, 1)   # Chimney - Sky Blue
             ]
 
-            for i, (_, class_index) in enumerate(self.icon_class):  # Unpack the tuple
-                glColor3f(*icon_colors[class_index])  # Set color based on class
+            for i, (_, class_index) in enumerate(self.icon_class):
+                glColor3f(*icon_colors[class_index]) 
                 self.draw_quadrilateral(self.icons[i])
         
         if self.show_walls:
@@ -160,14 +159,13 @@ class FloorPlanViewer(QOpenGLWidget):
         glEndList()
         
     def paintEvent(self, event):
-        super().paintEvent(event)  # Render OpenGL content first
+        super().paintEvent(event)
 
-        glDisable(GL_DEPTH_TEST)  # Disable depth testing for 2D elements
+        glDisable(GL_DEPTH_TEST)
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Draw the room legend (top-right)
         margin = 10
         room_x = self.width() - 200 - margin
         room_y = margin
@@ -186,7 +184,6 @@ class FloorPlanViewer(QOpenGLWidget):
             painter.setPen(Qt.black)
             painter.drawText(room_x + 30, room_y + i * 25 + 15, name)
 
-        # Draw the icon legend (top-left)
         icon_x = margin
         icon_y = margin
         painter.setBrush(Qt.white)
@@ -206,13 +203,13 @@ class FloorPlanViewer(QOpenGLWidget):
 
         painter.end()
 
-        glEnable(GL_DEPTH_TEST)  # Re-enable depth testing
+        glEnable(GL_DEPTH_TEST)
 
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
-        glTranslatef(self.pos_x, self.pos_y, self.pos_z * self.zoom_factor)  # Use position and zoom factor
+        glTranslatef(self.pos_x, self.pos_y, self.pos_z * self.zoom_factor)
         glRotatef(self.rot_x, 1, 0, 0)
         glRotatef(self.rot_y, 0, 1, 0)
 
@@ -235,6 +232,7 @@ class FloorPlanViewer(QOpenGLWidget):
         
     def draw_wall(self, quad):
         """Draws a quadrilateral given its 4 corner points."""
+
         glBegin(GL_QUADS)
         for i in range(len(quad)):
             p1 = quad[i]
@@ -248,11 +246,9 @@ class FloorPlanViewer(QOpenGLWidget):
     def draw_quadrilateral(self, quad):
         """Draws a quadrilateral with a roof."""
         
-        # Calculate the center point of the quadrilateral
         center_x = sum(point[0] for point in quad) / 4
         center_y = sum(point[1] for point in quad) / 4
         
-        # Draw the roof (a sloped top)
         glBegin(GL_QUADS)
         for i in range(len(quad)):
             p1 = quad[i]
@@ -263,7 +259,6 @@ class FloorPlanViewer(QOpenGLWidget):
             glVertex3f(p2[0] - 250*self.offset_factor, 50, p2[1] - 250*self.offset_factor)  # Top of next wall
         glEnd()
 
-        # Draw the walls
         glBegin(GL_QUADS)
         for i in range(len(quad)):
             p1 = quad[i]
@@ -278,21 +273,18 @@ class FloorPlanViewer(QOpenGLWidget):
         """Draws a polygon given its vertices, with improved handling for curves."""
         elevation = 0
         glBegin(GL_TRIANGLE_FAN)
-        # Calculate centroid
         centroid_x = sum(vertex[0][0] for vertex in polygon) / len(polygon)
         centroid_y = sum(vertex[0][1] for vertex in polygon) / len(polygon)
         
         if which == "contour":
             elevation = -2
         
-        # Start with centroid
         glVertex3f(centroid_x - 250*self.offset_factor, elevation, centroid_y - 250*self.offset_factor)
         
         for vertex in polygon:
             x, y = vertex[0][0], vertex[0][1]
             glVertex3f(x - 250*self.offset_factor, elevation, y - 250*self.offset_factor)
         
-        # Close the polygon
         x, y = polygon[0][0][0], polygon[0][0][1]
         glVertex3f(x - 250*self.offset_factor, elevation, y - 250*self.offset_factor)
         
@@ -328,10 +320,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("3D Floor Plan Viewer")
         
-        # Initialize main widget
         self.viewer = FloorPlanViewer(rooms, contours, walls, icons, icon_class, room_class)
         
-        # Initialize toggle buttons
         toggle_room_btn = QPushButton("Toggle Rooms", self)
         toggle_room_btn.clicked.connect(self.viewer.toggle_rooms)
         
@@ -341,14 +331,12 @@ class MainWindow(QMainWindow):
         toggle_icon_btn = QPushButton("Toggle Icons", self)
         toggle_icon_btn.clicked.connect(self.viewer.toggle_icons)
         
-        # Layout setup
         layout = QVBoxLayout()
         layout.addWidget(self.viewer)
         layout.addWidget(toggle_room_btn)
         layout.addWidget(toggle_wall_btn)
         layout.addWidget(toggle_icon_btn)
         
-        # Set central widget with layout
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
@@ -358,8 +346,6 @@ class Renderer():
     def __init__(self):
         pass
 
-        # self.show_model()
-        # self.window.show()
     def generate_model(self, rooms, contours, walls, icons, icon_class, room_class):
         self.rooms = rooms
         self.contours = contours

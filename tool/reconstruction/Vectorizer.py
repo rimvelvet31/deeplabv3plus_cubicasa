@@ -6,43 +6,15 @@ import cv2
 from presets import OUTPUT
 from icecream import ic
 
-# torch.set_printoptions(profile="full")
-
-# sample = torch.load(OUTPUT.PYTORCH_VALUES)
-# print(sample.shape)
-
-# # Room segmentation map
-# plt.imshow(sample[21])
-# plt.axis('off') # Remove the axes
-# plt.show()
-# # plt.set_title('Room Labels')
-
-# # Icon segmentation map
-# plt.imshow(sample[22])
-# plt.axis('off')
-# # plt.set_title('Icon Labels')
-
-# plt.tight_layout()
-# plt.show()
-
-# Heatmaps
-# for i in range(21):
-#     plt.imshow(sample[i])
-#     plt.title(f'Heatmap {i+1}')
-#     plt.axis('off')
-#     plt.show()
-
 class Vectorizer():
     def __init__(self):
         pass
-        # rooms, contours, walls, icons, icon_class, room_class
-        
-    # Helper function: Extract contours and fit to quadrilateral (4 points)
+
     def _extract_labeled_room_contours(self, segmentation_map, min_area=0):
         #room_classes = ["Background", "Outdoor", "Wall", "Kitchen", "Living Room" ,"Bed Room", "Bath", "Entry", "Railing", "Storage", "Garage", "Undefined"]
         unique_labels = np.unique(segmentation_map)
         room_contours = []
-        room_classes = []  # Add list to store room classes
+        room_classes = []
         outer_contour = None
         max_area = 12000
 
@@ -57,17 +29,13 @@ class Vectorizer():
                     approx = cv2.approxPolyDP(cnt, epsilon, True)
                     if area > max_area:
                         outer_contour = approx
-                        outer_contour_class = label  # Store class for outer contour
+                        outer_contour_class = label
                     else:
                         room_contours.append(approx)
-                        room_classes.append(label)  # Store class for each room
+                        room_classes.append(label)
 
-        return outer_contour, outer_contour_class, room_contours, room_classes  # Return classes along with contours
-
-    # def get_outer_floorplan_contour(segmentation_map):
-    #     outer_contour, _ = extract_labeled_room_contours(segmentation_map)
-    #     return outer_contour
-
+        return outer_contour, outer_contour_class, room_contours, room_classes
+    
     def _line_intersects_rectangle(self, line_start, line_end, rect):
         def ccw(A, B, C):
             return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
@@ -101,7 +69,7 @@ class Vectorizer():
             
             den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
             if den == 0:
-                return None  # Lines are parallel
+                return None
             
             t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
             if 0 <= t <= 1:
@@ -127,10 +95,6 @@ class Vectorizer():
     def _generate_walls(self, room_polygons, icon_quadrilaterals, which, wall_height=10):
         walls = []
         for i, room in enumerate(room_polygons):
-            # if which == "outer" and i == 0:
-            #     continue
-            # elif which == "inner" and i == 10:
-            #     continue
             for i in range(len(room)):
                 next_i = (i + 1) % len(room)
                 wall_start = room[i][0]
@@ -151,7 +115,6 @@ class Vectorizer():
                                 break
 
                     if intersecting_icon is not None:
-                        # Create wall segment up to the icon
                         wall = [
                             [current_point[0], current_point[1], 0],
                             [next_point[0], next_point[1], 0],
@@ -160,7 +123,6 @@ class Vectorizer():
                         ]
                         walls.append(wall)
 
-                        # Find exit point from the icon
                         exit_point = None
                         for icon_point in icon:
                             if not self._point_in_rectangle(icon_point, intersecting_icon) and \
@@ -171,15 +133,12 @@ class Vectorizer():
                         if exit_point is not None:
                             current_point = exit_point
                         else:
-                            # If no suitable exit point found, move to the next corner of the icon
                             icon_index = next((i for i, point in enumerate(icon) if self._point_equal(point, next_point)), None)
                             if icon_index is not None:
                                 current_point = icon[(icon_index + 1) % 4]
                             else:
-                                # If we can't find the next point in the icon, just move to wall_end to avoid infinite loop
                                 current_point = wall_end
                     else:
-                        # No intersection, create full wall segment
                         wall = [
                             [current_point[0], current_point[1], 0],
                             [next_point[0], next_point[1], 0],
@@ -191,20 +150,18 @@ class Vectorizer():
 
         return walls
 
-    # Helper function: Extract icons (doors, windows, etc.) as quadrilaterals
     def _extract_icon_quadrilaterals(self, icon_map):
         icon_classes = ["No Icon", "Window", "Door", "Closet", "Electrical Applience" ,"Toilet", "Sink", "Sauna Bench", "Fire Place", "Bathtub", "Chimney"]  # Assuming these are your icon classes
         icon_map_8bit = (icon_map * 255).astype(np.uint8)
         _, thresholded = cv2.threshold(icon_map_8bit, 127, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        # Convert contours to quadrilateral format and include class information
         icon_quads = []
         for i, cnt in enumerate(contours):
             x, y, w, h = cv2.boundingRect(cnt)
             quad = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
-            class_index = i % len(icon_classes)  # Cycle through class indices
-            icon_quads.append((quad, class_index))  # Include class index with the quad
+            class_index = i % len(icon_classes)
+            icon_quads.append((quad, class_index))
         return icon_quads
 
     def _scale_room_polygon(self, room_polygon, scale_factor):
@@ -231,27 +188,19 @@ class Vectorizer():
         """
         scale_factor = 2
         
-        # Load the PyTorch tensor file
         segmentation_maps = torch_file
-        # print(segmentation_maps.shape)
 
-        # Extract room segmentation from Channel 21 (index 20)
         room_segmentation = segmentation_maps[0].cpu().numpy()
         outer_contour, outer_contour_class, room_polygons, room_classes = self._extract_labeled_room_contours(room_segmentation)
         outer_contour = [outer_contour] if outer_contour is not None else []
-        # room_polygons = extract_labeled_room_contours(room_segmentation)
-        # all_contours = [outer_contour] + room_contours if outer_contour is not None else room_contours
         
-        # Extract door, window, and furniture quadrilaterals from Channel 22 (index 21)
         icon_map = segmentation_maps[1].cpu().numpy()
         icon_quadrilaterals = self._extract_icon_quadrilaterals(icon_map)
 
-        # vectorized_rooms = [poly for poly in room_polygons]
         outer_walls = self._generate_walls(outer_contour, [], "outer", 10)
         inner_walls = self._generate_walls(room_polygons, [], "inner", 10)
         
         walls = inner_walls + outer_walls
-        # vectorized_icons = [quad for quad in icon_quadrilaterals]
         
         scaled_rooms = [self._scale_room_polygon(poly, scale_factor) for poly in room_polygons]
         scaled_outer_contour = [self._scale_room_polygon(contour, scale_factor) for contour in outer_contour]
@@ -261,6 +210,5 @@ class Vectorizer():
         return scaled_rooms, scaled_outer_contour, scaled_walls, scaled_icons, icon_quadrilaterals, room_classes
 
     def process_data(self, data):
-        # Your data processing logic
         result = self._floorplan_to_vectorized_output(data)
         return result
