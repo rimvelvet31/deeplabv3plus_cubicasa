@@ -1,6 +1,5 @@
 from pathlib import Path
 
-BASE_PATH = Path.cwd() / "tool" / "assets"
 red = r"C:\Users\Red\Documents\GitHub\deeplabv3plus_cubicasa\tool\assets"
 me = r"D:\GitHub\deepl_lab\tool\assets"
 
